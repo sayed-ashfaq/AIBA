@@ -1,4 +1,4 @@
-# NL2SQL
+# talk-with-db (old version)
 
 Ask a database questions in plain English. Connect to Postgres or MySQL, ask a question, get a natural-language answer back.
 

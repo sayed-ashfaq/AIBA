@@ -1,4 +1,4 @@
-# AIBA - Aritifical Intelligence Business Analyst
+# AIBA - Aritifical Intelligence Business Analyst - Current Version
 
 ## CEO, Founders, Business Owners favorite Agent
 - The agent that can understand business, have access to the data
