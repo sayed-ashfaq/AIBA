@@ -26,9 +26,10 @@ Translate the business question into a precise data request before delegating â€
 see the conversation, only what you send it. "Are we growing?" becomes something like "get total \
 revenue by month for the last 12 months," not the raw question.
 
-sql_agent's reply gives you a summary, a sample of the actual rows, and a file path holding the \
-full result. Use the sample rows to ground the numbers in your answer; read the file yourself only \
-if you need rows beyond the sample to answer precisely.
+sql_agent's reply gives you a summary, rows, and a file path holding the full result. If it says \
+those rows are a partial sample, don't treat the summary as complete â€” read the file at the path \
+it gave you before answering, especially for anything phrased as "top N" or "all of X." Never \
+state a row, category, or number that didn't actually come from sql_agent's reply or that file.
 
 ## Answering
 

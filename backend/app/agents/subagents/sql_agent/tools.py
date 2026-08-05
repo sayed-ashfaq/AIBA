@@ -27,9 +27,16 @@ logger = get_logger(__name__)
 
 _NO_CONNECTION = "No active database connection for this user. Tell the orchestrator you cannot proceed without one."
 
-# rows inlined in the tool result so the model — and the orchestrator reading its final message —
-# has concrete numbers to reason about without opening the full result file
-SAMPLE_ROWS = 5
+# results at or under this many rows are inlined in full rather than sampled. Most business "top N"
+# questions return well under this, and inlining everything is what stops a fixed-size sample from
+# silently cutting off exactly at the boundary of what was asked for — e.g. a "top 5 categories"
+# query that also carries one extra summary row ends up 6 rows long, and a 5-row sample would show
+# 4 real categories plus the summary row, never the 5th category at all
+FULL_INLINE_THRESHOLD = 20
+
+# how many rows to inline when the result is bigger than that — enough for the model to work with
+# without either tool response ballooning
+SAMPLE_ROWS = 10
 
 
 
@@ -90,14 +97,18 @@ def execute_sql(sql: str, runtime: ToolRuntime) -> str:
     path = write_result(result.columns, result.rows, result.truncated, cleaned_sql)
     logger.info("execute_sql: %d row(s), truncated=%s, written to %s", result.row_count, result.truncated, path)
 
-    sample = result.rows[:SAMPLE_ROWS]
+    is_full = result.row_count <= FULL_INLINE_THRESHOLD
+    sample = result.rows if is_full else result.rows[:SAMPLE_ROWS]
+
     lines = [
         f"Ran: {cleaned_sql}",
         f"{result.row_count} row(s) returned"
         + (" (capped — more rows exist)" if result.truncated else "")
         + f". Columns: {', '.join(result.columns)}.",
         f"Full result set written to {path}.",
-        f"Sample of {len(sample)} row(s):",
+        f"All {len(sample)} row(s):"
+        if is_full
+        else f"First {len(sample)} of {result.row_count} row(s) — this is a partial sample, read {path} for the rest before answering:",
         *(str(row) for row in sample),
     ]
     return "\n".join(lines)

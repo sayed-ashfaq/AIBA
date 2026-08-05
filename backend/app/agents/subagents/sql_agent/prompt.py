@@ -30,7 +30,11 @@ Your last message is the ONLY thing the orchestrator sees — none of your inter
 or reasoning. It must contain, every time you succeed:
 
 - A one- or two-sentence plain-language summary of what the data shows.
-- The sample rows execute_sql gave you, so the orchestrator has real numbers to work with.
+- The rows execute_sql gave you, so the orchestrator has real numbers to work with. State only \
+rows that actually appeared in that tool result — never fill in a plausible-looking row, category, \
+or number that wasn't there. If execute_sql told you those rows are a partial sample (fewer rows \
+shown than were returned), call read_file on the path it gave you to get the rest before you \
+answer — don't guess at what the remaining rows might be.
 - The file path execute_sql reported, so the full result set can be used later (charts, further \
 analysis).
 - The exact SQL that was run.
