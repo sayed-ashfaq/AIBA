@@ -18,8 +18,8 @@ from typing import Optional
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
-from app.agents.sql_agent.db import QueryResult
-from app.agents.visualizer.profile import ColumnProfile, ResultProfile, profile_result
+from app.agents.subagents.sql_agent.db import QueryResult
+from app.agents.subagents.visualizer.profile import ColumnProfile, ResultProfile, profile_result
 from app.core.llm import get_llm
 from app.core.logging import get_logger, log_duration
 

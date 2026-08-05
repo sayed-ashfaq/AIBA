@@ -1,8 +1,8 @@
 from typing import Optional, TypedDict
 
-from app.agents.sql_agent.db import Connection, QueryResult
-from app.agents.visualizer.charts import ChartSpec
-from app.agents.visualizer.profile import ResultProfile
+from app.agents.subagents.sql_agent.db import Connection, QueryResult
+from app.agents.subagents.visualizer.charts import ChartSpec
+from app.agents.subagents.visualizer.profile import ResultProfile
 
 
 class SQLAgentState(TypedDict):

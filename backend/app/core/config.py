@@ -14,8 +14,11 @@ class Settings(BaseSettings):
 
     groq_api_key: str
 
-    # one model id per agent, so each can be tuned independently
-    main_agent_model: str = "llama-3.3-70b-versatile"
+    # one model id per agent, so each can be tuned independently. llama-3.3-70b-versatile was tried
+    # for main_agent first, but it malforms Groq's structured tool-calling once the orchestrator's
+    # tool surface gets this large (task, write_todos, plus the built-in filesystem tools) — Groq
+    # rejects the call with a 400 tool_use_failed. gpt-oss-120b handles it reliably.
+    main_agent_model: str = "openai/gpt-oss-120b"
     sql_agent_model: str = "openai/gpt-oss-120b"
     # picks between pre-validated chart options — a small judgement call on a short prompt, so it
     # has no use for a larger model than this

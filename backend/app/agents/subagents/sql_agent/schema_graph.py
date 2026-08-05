@@ -35,7 +35,7 @@ from pydantic import BaseModel
 from sqlalchemy import inspect
 from sqlalchemy.engine import Engine
 
-from app.agents.sql_agent import db
+from app.agents.subagents.sql_agent import db
 from app.core.llm import get_llm
 from app.core.logging import get_logger, log_duration
 

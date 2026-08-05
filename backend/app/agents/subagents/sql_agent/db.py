@@ -12,7 +12,7 @@ from typing import Literal, Optional
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import Engine, make_url
 
-from app.agents.sql_agent import rows
+from app.agents.subagents.sql_agent import rows
 from app.core.exceptions import ConnectionUnreachableError, SQLExecutionError
 from app.core.logging import get_logger
 
@@ -69,7 +69,7 @@ class DbContext:
     the router before the graph runs — agent nodes are synchronous and cannot await the annotations
     read, nor reach into the async registry.
 
-    Lives here rather than in the service layer so app.agents.main_agent.state can name it in
+    Lives here rather than in the service layer so app.agents.orchestrator.context can name it in
     AgentState without an agent module importing a service. LangGraph resolves state type hints at
     runtime, so this import cannot be deferred behind TYPE_CHECKING.
 
