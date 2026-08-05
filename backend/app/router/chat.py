@@ -7,7 +7,8 @@ from fastapi import APIRouter
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from pydantic import BaseModel, Field
 
-from app.agents.main_agent.main import graph
+from app.agents.orchestrator.context import AgentContext
+from app.agents.orchestrator.deep_agent import agent
 from app.core.dependencies import CurrentUser
 from app.core.logging import get_logger, log_duration
 from app.db.models import Message
@@ -72,13 +73,37 @@ def _to_lc_messages(history: list[Message]) -> list[AnyMessage]:
     ]
 
 
+def _final_reply(messages: list[AnyMessage]) -> str:
+    """The orchestrator's last word to the user. Walks back to the last non-empty AIMessage rather
+    than trusting messages[-1] — a provider occasionally emits a trailing empty end-turn message
+    after the real answer, same reasoning deepagents' own task-tool return path uses."""
+    for message in reversed(messages):
+        if isinstance(message, AIMessage) and message.text:
+            text = message.text.rstrip()
+            if text:
+                return text
+    return ""
+
+
+def _routed_to(messages: list[AnyMessage]) -> str:
+    """Which subagent, if any, the orchestrator delegated to for this turn's answer. "orchestrator"
+    when it answered directly — a greeting or a question that never needed data."""
+    for message in reversed(messages):
+        if not isinstance(message, AIMessage):
+            continue
+        for call in message.tool_calls:
+            if call["name"] == "task":
+                return call["args"].get("subagent_type", "orchestrator")
+    return "orchestrator"
+
+
 @router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> ChatResponse:
     logger.info("user %s: %s", user.id, request.message)
 
-    # Resolved here, not inside the SQL agent: the agent graph is synchronous and can neither await
-    # the annotations read nor rebuild a connection. Stays None when the user has nothing active —
-    # plenty of questions never reach the SQL agent, and those must still work without a connection.
+    # Resolved here, not inside the agent: the agent graph is synchronous and can neither await the
+    # annotations read nor rebuild a connection. Stays None when the user has nothing active —
+    # plenty of questions never reach sql_agent, and those must still work without a connection.
     db_context = await connection_service.get_active_db_context(session, user)
 
     if request.chat_id is None:
@@ -89,50 +114,25 @@ async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> 
             connection_id=user.active_connection_id,
         )
         history: list[Message] = []
-        prior = None
     else:
         # ownership checked here, before any LLM work — posting into someone else's chat must fail
         # fast rather than after 30 seconds of inference
         chat_row = await chat_service.get_owned_chat(session, user.id, request.chat_id)
         history = await chat_service.load_history(session, chat_row.id)
-        # The rows the last query returned, so "show that as a pie chart" has something to chart
-        # without asking the user's database the same question again.
-        #
-        # Read on every turn, including the ones that turn out not to need it, because nothing
-        # knows whether they do until the supervisor has routed — and by then the graph is running
-        # synchronously on a worker thread with no way to await a second read. One indexed lookup
-        # against our own metadata store, next to a turn that spends seconds in LLM calls.
-        prior = result_service.from_storage(await chat_service.load_last_result(session, chat_row.id))
 
     with log_duration("Total query completion"):
         # the graph is sync and spends most of its time in blocking LLM/driver calls, so it runs on
         # a worker thread rather than stalling the event loop for the whole turn
         result = await asyncio.to_thread(
-            graph.invoke,
-            {
-                "chat_history": _to_lc_messages(history),
-                "db_context": db_context,
-                "prior_result": result_service.to_query_result(prior) if prior else None,
-                "question": request.message,
-                "refined_query": "",
-                "next": "",
-                "agent_output": None,
-                "agent_sql": None,
-                "attempts": 0,
-                "result_rows": None,
-                "result_columns": None,
-                "result_truncated": False,
-                "chart_spec": None,
-                "chart_profile": None,
-                "final_answer": None,
-                "final_sql": None,
-            },
+            agent.invoke,
+            {"messages": _to_lc_messages(history) + [HumanMessage(content=request.message)]},
+            context=AgentContext(chat_id=chat_row.id, db_context=db_context),
         )
 
-    routed_to = result.get("next") or "respond"
-    logger.info("routed_to=%s", routed_to)
-
-    data = result_service.query_data(result)
+    reply = _final_reply(result["messages"])
+    routed_to = _routed_to(result["messages"])
+    data = result_service.from_agent_files(result.get("files", {}))
+    sql = result_service.sql_from_agent_files(result.get("files", {}))
 
     # committed only now: a failure above leaves no half-written turn, and an abandoned new chat
     # leaves no empty row
@@ -140,8 +140,8 @@ async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> 
         session,
         chat_row,
         question=request.message,
-        answer=result["final_answer"],
-        sql=result.get("final_sql"),
+        answer=reply,
+        sql=sql,
         routed_to=routed_to,
         result_data=result_service.for_storage(data),
     )
@@ -149,9 +149,9 @@ async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> 
     return ChatResponse(
         chat_id=chat_row.id,
         title=chat_row.title,
-        reply=assistant.content,
+        reply=reply,
         routed_to=routed_to,
-        sql=assistant.sql,
+        sql=sql,
         data=data,
         message=MessageResponse.of(assistant),
     )

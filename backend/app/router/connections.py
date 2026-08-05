@@ -6,7 +6,7 @@ from typing import Literal, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel, Field, model_validator
 
-from app.agents.sql_agent import schema_graph
+from app.agents.subagents.sql_agent import schema_graph
 from app.core.dependencies import CurrentUser
 from app.core.logging import get_logger, log_duration
 from app.db.session import SessionDep

@@ -1,7 +1,7 @@
 """Persistence for saved connections and schema annotations.
 
 Everything here talks to *our* metadata store. Actually reaching out to a user's target database —
-connecting, introspecting, running SQL — lives in app.agents.sql_agent.db, which this module calls
+connecting, introspecting, running SQL — lives in app.agents.subagents.sql_agent.db, which this module calls
 into but never the other way around. The live engine for whoever is currently connected is held by
 app.services.connection_registry.
 
@@ -16,8 +16,8 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.sql_agent import db
-from app.agents.sql_agent.db import DbContext
+from app.agents.subagents.sql_agent import db
+from app.agents.subagents.sql_agent.db import DbContext
 from app.core.crypto import decrypt, encrypt
 from app.core.exceptions import (
     ConnectionNameTakenError,

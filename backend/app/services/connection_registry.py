@@ -1,7 +1,7 @@
 """Which target database each user is currently pointed at, in process memory.
 
 This replaces the single process-wide `_active` connection that used to live in
-app.agents.sql_agent.db. With one global, activating a connection changed the database *every* user
+app.agents.subagents.sql_agent.db. With one global, activating a connection changed the database *every* user
 of the server was querying; the registry makes "active" a per-user fact.
 
 Two things live here rather than in the database because they cannot be serialised: the live
@@ -15,8 +15,8 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Optional
 
-from app.agents.sql_agent.db import Connection
-from app.agents.sql_agent.schema_graph import SchemaGraph
+from app.agents.subagents.sql_agent.db import Connection
+from app.agents.subagents.sql_agent.schema_graph import SchemaGraph
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)

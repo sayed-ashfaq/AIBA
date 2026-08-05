@@ -15,8 +15,10 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ValidationError
 
-from app.agents.sql_agent.db import QueryResult
-from app.agents.visualizer.charts import ChartSpec
+from app.agents.shared.files import RESULTS_DIR
+from app.agents.subagents.sql_agent.db import QueryResult
+from app.agents.subagents.visualizer.charts import ChartSpec
+from app.agents.subagents.visualizer.profile import profile_result
 from app.core.logging import get_logger
 
 logger = get_logger(__name__)
@@ -58,25 +60,43 @@ class QueryData(BaseModel):
     profile: list[ColumnInfo] = []
 
 
-def query_data(state: dict) -> Optional[QueryData]:
-    """The payload for one turn, or None unless a query actually ran — a greeting, a web lookup or
-    a blocked write all leave the state's row fields untouched."""
-    rows = state.get("result_rows")
-    if rows is None:
+def _latest_result_payload(files: dict) -> Optional[dict]:
+    """The most recently written /results/*.json payload in one turn's virtual filesystem, or None
+    if sql_agent never queried data. A turn can delegate more than once (e.g. "compare this month
+    to last month"), so more than one file can exist — the most recent one is what the
+    orchestrator's final answer was actually grounded in."""
+    candidates = {path: fd for path, fd in files.items() if path.startswith(RESULTS_DIR + "/")}
+    if not candidates:
+        return None
+    latest_path = max(candidates, key=lambda p: candidates[p].get("modified_at") or candidates[p].get("created_at") or "")
+    return json.loads(candidates[latest_path]["content"])
+
+
+def from_agent_files(files: dict) -> Optional[QueryData]:
+    """The rows behind one turn's answer, or None unless sql_agent actually queried data. No chart
+    yet — that's the visualizer subagent's job, not built yet — so this is rows and their shape
+    (via profile_result) only."""
+    payload = _latest_result_payload(files)
+    if payload is None:
         return None
 
-    profile = state.get("chart_profile")
+    result = QueryResult(columns=payload["columns"], rows=payload["rows"], truncated=payload["truncated"])
+    profile = profile_result(result)
     return QueryData(
-        columns=state.get("result_columns") or [],
-        rows=rows,
-        row_count=len(rows),
-        truncated=bool(state.get("result_truncated")),
-        chart=state.get("chart_spec"),
-        profile=[
-            ColumnInfo(name=c.name, role=c.role, distinct=c.distinct, nulls=c.nulls)
-            for c in (profile.columns if profile else [])
-        ],
+        columns=result.columns,
+        rows=result.rows,
+        row_count=result.row_count,
+        truncated=result.truncated,
+        profile=[ColumnInfo(name=c.name, role=c.role, distinct=c.distinct, nulls=c.nulls) for c in profile.columns],
     )
+
+
+def sql_from_agent_files(files: dict) -> Optional[str]:
+    """The exact SQL behind the same result from_agent_files would return, or None. Kept separate
+    from QueryData (which has never carried a sql field) rather than folded in, so ChatResponse's
+    existing top-level `sql` field stays sourced the same way it always has."""
+    payload = _latest_result_payload(files)
+    return payload.get("sql") if payload else None
 
 
 def _fit(rows: list[dict]) -> list[dict]:

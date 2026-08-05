@@ -87,7 +87,7 @@ def execute_sql(sql: str, runtime: ToolRuntime) -> str:
         logger.info("execute_sql rejected: %s", exc)
         return f"SQL error: {exc}"
 
-    path = write_result(result.columns, result.rows, result.truncated)
+    path = write_result(result.columns, result.rows, result.truncated, cleaned_sql)
     logger.info("execute_sql: %d row(s), truncated=%s, written to %s", result.row_count, result.truncated, path)
 
     sample = result.rows[:SAMPLE_ROWS]
