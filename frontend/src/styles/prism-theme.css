@@ -1,0 +1,48 @@
+/* Minimal SQL syntax palette tuned to the app's warm/neutral theme instead of Prism's defaults. */
+code[class*="language-"],
+pre[class*="language-"] {
+  color: var(--color-text);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  text-shadow: none;
+  background: none;
+}
+
+.token.keyword {
+  color: var(--color-accent);
+  font-weight: 600;
+}
+
+.token.function {
+  color: var(--color-accent);
+}
+
+.token.string {
+  color: #6a8759;
+}
+
+.token.number,
+.token.boolean {
+  color: #a65d3f;
+}
+
+.token.operator,
+.token.punctuation {
+  color: var(--color-text-secondary);
+}
+
+.token.comment {
+  color: var(--color-text-secondary);
+  font-style: italic;
+}
+
+@media (prefers-color-scheme: dark) {
+  .token.string {
+    color: #8fbc7a;
+  }
+
+  .token.number,
+  .token.boolean {
+    color: #e0a97e;
+  }
+}

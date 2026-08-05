@@ -1,0 +1,96 @@
+:root {
+  --color-bg: #faf9f5;
+  --color-surface: #ffffff;
+  --color-border: #e8e6dc;
+  --color-text: #1f1e1d;
+  --color-text-secondary: #6b6a64;
+  --color-accent: #d97757;
+  --color-accent-hover: #c25f3f;
+  --color-accent-bg: rgba(217, 119, 87, 0.12);
+  --color-danger: #b3492f;
+  --color-danger-bg: #fbeae5;
+
+  --graph-node: #cbb6a3;
+  --graph-node-selected: #d97757;
+  --graph-link: rgba(107, 106, 100, 0.35);
+  --graph-label: #6b6a64;
+
+  /* categorical, for coloring graph nodes by schema — validated (CVD + contrast) against this
+     page's own surfaces via the dataviz skill's palette validator, fixed order, never cycled */
+  --graph-schema-1: #2a78d6;
+  --graph-schema-2: #008300;
+  --graph-schema-3: #e87ba4;
+  --graph-schema-4: #eda100;
+
+  /* Chart series, assigned in fixed order and never cycled — a 9th series does not get a
+     generated hue. Validated as a set against this app's own chart surface (#ffffff light,
+     #30302e dark) with the dataviz skill's validator: lightness band, chroma floor, adjacent-pair
+     CVD separation and normal-vision floor all pass in both modes. Three light slots sit under
+     3:1 contrast, which is why every chart ships a table view — that's the relief, not a nicety. */
+  --chart-series-1: #2a78d6;
+  --chart-series-2: #eb6834;
+  --chart-series-3: #1baf7a;
+  --chart-series-4: #eda100;
+  --chart-series-5: #e87ba4;
+  --chart-series-6: #008300;
+  --chart-series-7: #4a3aa7;
+  --chart-series-8: #e34948;
+
+  /* chart chrome: recessive by design, so the data is the only loud thing on the card */
+  --chart-grid: #e8e6dc;
+  --chart-axis: #c3c2b7;
+
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 10px;
+
+  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif;
+  --font-mono: "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+
+  --shadow-sm: 0 1px 2px rgba(31, 30, 29, 0.06);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #262624;
+    --color-surface: #30302e;
+    --color-border: #42413d;
+    --color-text: #f5f4ed;
+    --color-text-secondary: #a8a69e;
+    --color-accent: #d97757;
+    --color-accent-hover: #e8926f;
+    --color-accent-bg: rgba(217, 119, 87, 0.16);
+    --color-danger: #e8926f;
+    --color-danger-bg: rgba(232, 146, 111, 0.14);
+
+    --graph-node: #8a776a;
+    --graph-node-selected: #d97757;
+    --graph-link: rgba(168, 166, 158, 0.35);
+    --graph-label: #a8a69e;
+
+    --graph-schema-1: #3987e5;
+    --graph-schema-2: #008300;
+    --graph-schema-3: #d55181;
+    --graph-schema-4: #c98500;
+
+    /* the same eight hues re-stepped for the dark surface — selected and re-validated against
+       #30302e, never an automatic flip of the light values */
+    --chart-series-1: #3987e5;
+    --chart-series-2: #d95926;
+    --chart-series-3: #199e70;
+    --chart-series-4: #c98500;
+    --chart-series-5: #d55181;
+    --chart-series-6: #008300;
+    --chart-series-7: #9085e9;
+    --chart-series-8: #e66767;
+
+    --chart-grid: #42413d;
+    --chart-axis: #56554f;
+
+    --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.25);
+
+    color-scheme: dark;
+  }
+}
