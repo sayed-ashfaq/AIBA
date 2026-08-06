@@ -5,6 +5,7 @@ from app.core.config import settings
 _AGENT_MODELS = {
     "main_agent": settings.main_agent_model,
     "sql_agent": settings.sql_agent_model,
+    "python_agent": settings.python_agent_model,
     "visualizer": settings.visualizer_model,
 }
 

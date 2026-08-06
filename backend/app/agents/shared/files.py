@@ -8,17 +8,19 @@ re-charting rather than within-turn handoff between subagents.
 
 import json
 import uuid
+from typing import Optional
 
 from deepagents.backends import StateBackend
 
 RESULTS_DIR = "/results"
 
 
-def write_result(columns: list[str], rows: list[dict], truncated: bool, sql: str) -> str:
-    """Write one query's full result set to the virtual filesystem and return its path.
+def write_result(columns: list[str], rows: list[dict], truncated: bool, sql: Optional[str] = None) -> str:
+    """Write one result set to the virtual filesystem and return its path. Used by both sql_agent
+    (sql set) and python_agent (sql=None — a computed result has none).
 
-    A fresh path per call, not a fixed one — a single turn can delegate to sql_agent more than
-    once (e.g. "compare this month to last month"), and each result needs its own file.
+    A fresh path per call, not a fixed one — a single turn can delegate more than once (e.g.
+    "compare this month to last month"), and each result needs its own file.
 
     sql is carried alongside the rows because it's the only place the router can recover it after
     the fact — a subagent's own tool calls aren't visible in the orchestrator's message history,
@@ -33,3 +35,13 @@ def write_result(columns: list[str], rows: list[dict], truncated: bool, sql: str
     payload = {"columns": columns, "rows": rows, "truncated": truncated, "sql": sql}
     StateBackend().write(path, json.dumps(payload))
     return path
+
+
+def read_result(path: str) -> dict:
+    """Read back a payload written by write_result — e.g. python_agent loading a result sql_agent
+    already fetched. Raises FileNotFoundError if nothing exists at the path (a typo, or a file from
+    a different turn)."""
+    result = StateBackend().read(path)
+    if result.error or result.file_data is None:
+        raise FileNotFoundError(result.error or f"no file at {path}")
+    return json.loads(result.file_data["content"])

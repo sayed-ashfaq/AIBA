@@ -20,6 +20,8 @@ class Settings(BaseSettings):
     # rejects the call with a 400 tool_use_failed. gpt-oss-120b handles it reliably.
     main_agent_model: str = "openai/gpt-oss-120b"
     sql_agent_model: str = "openai/gpt-oss-120b"
+    # same model as sql_agent — writing correct pandas is a comparable task to writing correct SQL
+    python_agent_model: str = "openai/gpt-oss-120b"
     # picks between pre-validated chart options — a small judgement call on a short prompt, so it
     # has no use for a larger model than this
     visualizer_model: str = "llama-3.3-70b-versatile"
