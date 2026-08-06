@@ -9,6 +9,7 @@ pipeline, not untrusted end-user input. The same trust level SQL generation alre
 
 import ast
 import json
+import os
 import resource
 import subprocess
 import sys
@@ -21,6 +22,20 @@ TIMEOUT_SECONDS = 10
 MEMORY_LIMIT_BYTES = 512 * 1024 * 1024
 
 ALLOWED_IMPORTS = {"pandas", "numpy", "math", "statistics", "datetime", "json", "decimal"}
+
+# OpenBLAS (loaded transitively by numpy/pandas) sizes its thread pool to the host's detected core
+# count and reserves virtual address space for it at import time, before any real data is touched
+# — under RLIMIT_AS below, that reservation alone can exceed the cap and fail with "OpenBLAS error:
+# Memory allocation still failed after 10 retries" on nothing more than `import pandas`. Pinning
+# every BLAS/OMP thread pool to 1 removes that host-dependent variable entirely: our datasets are
+# capped at a few thousand rows, so single-threaded BLAS costs nothing.
+_SANDBOX_ENV = {
+    **os.environ,
+    "OPENBLAS_NUM_THREADS": "1",
+    "OMP_NUM_THREADS": "1",
+    "MKL_NUM_THREADS": "1",
+    "NUMEXPR_NUM_THREADS": "1",
+}
 
 _MAX_OUTPUT_CHARS = 4000
 
@@ -125,6 +140,7 @@ def run_python(code: str, datasets: list[dict]) -> SandboxResult:
                 text=True,
                 timeout=TIMEOUT_SECONDS,
                 preexec_fn=_limit_resources,
+                env=_SANDBOX_ENV,
             )
         except subprocess.TimeoutExpired:
             return SandboxResult(error=f"execution timed out after {TIMEOUT_SECONDS}s")
