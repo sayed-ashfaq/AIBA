@@ -1,8 +1,14 @@
 from typing import Optional
 
+from dotenv import load_dotenv
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from sqlalchemy.engine import make_url
+
+# pydantic-settings' env_file only feeds .env values into this module's Settings object below — it
+# never touches the real process environment. Libraries that read os.environ directly and know
+# nothing about Settings (langsmith's tracing being the immediate case) see nothing without this.
+load_dotenv()
 
 # drivers that mean "postgres, synchronously" — rewritten to asyncpg so .env can stay in the
 # ordinary postgres:// form that psql and every other tool understands
