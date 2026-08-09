@@ -13,11 +13,15 @@ single task with a tool-error message, instead of letting a model that loses cou
 retries loop indefinitely. run_limit is per subagent invocation (deepagents calls `.invoke()` fresh
 for every task() delegation, with no checkpointer carrying state across them), which is exactly
 "3 attempts at this task", not 3 for the graph's lifetime.
+
+OperationLoggingMiddleware writes one local log line per run_data_code call, naming this agent and
+including the exact code run, so `grep`ing the log file shows what ran without opening LangSmith.
 """
 
 from deepagents import SubAgent
 from langchain.agents.middleware import ToolCallLimitMiddleware
 
+from app.agents.shared.operation_logging import OperationLoggingMiddleware
 from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
 from app.agents.subagents.python_agent.prompt import PYTHON_AGENT_PROMPT
 from app.agents.subagents.python_agent.tools import run_python
@@ -39,5 +43,6 @@ python_agent: SubAgent = {
     "middleware": [
         ToolCallRetryMiddleware(),
         ToolCallLimitMiddleware(tool_name="run_data_code", run_limit=3, exit_behavior="continue"),
+        OperationLoggingMiddleware("python_agent"),
     ],
 }

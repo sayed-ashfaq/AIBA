@@ -13,6 +13,10 @@ ToolCallRetryMiddleware is here for the same reason it's on each subagent (see t
 this main-agent model call is just as exposed to Groq rejecting a malformed tool call as any
 subagent's is, and each agent's model calls are only covered by middleware declared on that same
 agent's own stack, not inherited from here.
+
+OperationLoggingMiddleware writes one local log line per tool call this agent makes directly —
+task() delegations (which subagent, what it was asked) and write_todos — the same reason it's on
+each subagent too: nothing here is inherited from a subagent's own stack or vice versa.
 """
 
 from deepagents import create_deep_agent
@@ -20,6 +24,7 @@ from langchain.agents.middleware import TodoListMiddleware
 
 from app.agents.orchestrator.context import AgentContext
 from app.agents.orchestrator.instructions import ORCHESTRATOR_INSTRUCTIONS
+from app.agents.shared.operation_logging import OperationLoggingMiddleware
 from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
 from app.agents.subagents.python_agent.subagent import python_agent
 from app.agents.subagents.sql_agent.subagent import sql_agent
@@ -30,6 +35,10 @@ agent = create_deep_agent(
     model=get_llm("main_agent"),
     system_prompt=ORCHESTRATOR_INSTRUCTIONS,
     subagents=[sql_agent, python_agent, visualizer],
-    middleware=[TodoListMiddleware(), ToolCallRetryMiddleware()],
+    middleware=[
+        TodoListMiddleware(),
+        ToolCallRetryMiddleware(),
+        OperationLoggingMiddleware("orchestrator"),
+    ],
     context_schema=AgentContext,
 )

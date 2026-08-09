@@ -13,11 +13,16 @@ or another subagent declares, so this has to be listed here too, not just on the
 ToolCallLimitMiddleware enforces prompt.py's "up to 3 attempts" as a hard cap rather than a
 convention the model is trusted to count on its own — see python_agent/subagent.py's docstring for
 the full reasoning; the same applies here for render_chart.
+
+OperationLoggingMiddleware writes one local log line per render_chart call, naming this agent and
+including the exact matplotlib/seaborn code run, so `grep`ing the log file shows what ran without
+opening LangSmith.
 """
 
 from deepagents import SubAgent
 from langchain.agents.middleware import ToolCallLimitMiddleware
 
+from app.agents.shared.operation_logging import OperationLoggingMiddleware
 from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
 from app.agents.subagents.visualizer.prompt import VISUALIZER_PROMPT
 from app.agents.subagents.visualizer.tools import render_chart
@@ -39,5 +44,6 @@ visualizer: SubAgent = {
     "middleware": [
         ToolCallRetryMiddleware(),
         ToolCallLimitMiddleware(tool_name="render_chart", run_limit=3, exit_behavior="continue"),
+        OperationLoggingMiddleware("visualizer"),
     ],
 }

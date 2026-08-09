@@ -7,7 +7,7 @@ from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
 
 LOG_DIR = "logs"
-LOG_PREFIX = "nl2sql"
+LOG_PREFIX = "aiba"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(processName)s - %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"
 

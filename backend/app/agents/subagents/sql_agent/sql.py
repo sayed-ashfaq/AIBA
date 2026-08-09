@@ -1,4 +1,3 @@
-import logging
 import re
 import unicodedata
 
@@ -102,27 +101,22 @@ def apply_row_cap(sql: str, dialect: str, cap: int = db.MAX_ROWS) -> str:
 
 
 def clean_sql(llm_output: str, dialect: str) -> str:
+    """Raw model output to ready-to-run SQL: extract it from the fence, normalise it, reformat it,
+    make sure it's exactly one statement, transpile it for the target dialect, and cap its row
+    count. The result is what OperationLoggingMiddleware logs when execute_sql runs it — logging
+    each intermediate step here too would just show the same query five times over.
+    """
     sql = extract_sql(llm_output)
-    logging.info("Generated SQL query: \n%s", sql)
-
     sql = sanitize(sql)
     sql = format_sql(sql)
-    logging.info("Formatted Fixed SQL query: \n%s", sql)
-
     sql = extract_statement(sql)
-    logging.info("Extracted SQL query: \n%s", sql)
-
     sql = transpile(sql, dialect)
-    logging.info("Transformed SQL query SQLglot: \n%s", sql)
-
     sql = sanitize(sql)
     enforce_read_only(sql)
 
     # capped last: enforce_read_only vets what the model actually wrote, and everything from here
     # on is SQL we generated ourselves
-    sql = apply_row_cap(sql, dialect)
-    logging.info("Row-capped SQL query: \n%s", sql)
-    return sql
+    return apply_row_cap(sql, dialect)
 
 
 def clean_and_execute(llm_output: str, dialect: str, connection: db.Connection) -> tuple[str, db.QueryResult]:

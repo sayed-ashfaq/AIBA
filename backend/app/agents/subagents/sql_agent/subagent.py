@@ -21,11 +21,16 @@ blocked with a tool-error message instead of letting a model that loses count lo
 run_limit is per subagent invocation (deepagents calls `.invoke()` fresh for every task()
 delegation, with no checkpointer carrying state across them), which is exactly "3 attempts at this
 task", not 3 for the graph's lifetime.
+
+OperationLoggingMiddleware writes one local log line per tool call — get_schema, sql_generator,
+execute_sql — naming this agent and including the exact SQL, so `grep`ing the log file shows what
+ran without opening LangSmith.
 """
 
 from deepagents import SubAgent
 from langchain.agents.middleware import ToolCallLimitMiddleware
 
+from app.agents.shared.operation_logging import OperationLoggingMiddleware
 from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
 from app.agents.subagents.sql_agent.prompt import SQL_AGENT_PROMPT
 from app.agents.subagents.sql_agent.tools import execute_sql, get_schema, sql_generator
@@ -46,5 +51,6 @@ sql_agent: SubAgent = {
         ToolCallRetryMiddleware(),
         ToolCallLimitMiddleware(tool_name="sql_generator", run_limit=3, exit_behavior="continue"),
         ToolCallLimitMiddleware(tool_name="execute_sql", run_limit=3, exit_behavior="continue"),
+        OperationLoggingMiddleware("sql_agent"),
     ],
 }
