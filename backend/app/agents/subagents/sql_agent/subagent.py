@@ -12,9 +12,19 @@ ToolCallRetryMiddleware: Groq occasionally rejects a malformed tool call (wrong/
 names) from this model family with a hard 400 that would otherwise crash the turn — see its
 docstring. A subagent's middleware is entirely its own; it doesn't inherit whatever the main agent
 or another subagent declares, so this has to be listed here too, not just on the orchestrator.
+
+ToolCallLimitMiddleware enforces prompt.py's "up to 3 attempts total across both tools" as a hard
+cap rather than a convention the model is trusted to count on its own. One instance per tool (the
+middleware only filters by a single tool_name) caps sql_generator and execute_sql at 3 calls each,
+matching the generate -> execute retry pair the prompt walks through — the 4th call to either is
+blocked with a tool-error message instead of letting a model that loses count loop indefinitely.
+run_limit is per subagent invocation (deepagents calls `.invoke()` fresh for every task()
+delegation, with no checkpointer carrying state across them), which is exactly "3 attempts at this
+task", not 3 for the graph's lifetime.
 """
 
 from deepagents import SubAgent
+from langchain.agents.middleware import ToolCallLimitMiddleware
 
 from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
 from app.agents.subagents.sql_agent.prompt import SQL_AGENT_PROMPT
@@ -32,5 +42,9 @@ sql_agent: SubAgent = {
     "system_prompt": SQL_AGENT_PROMPT,
     "tools": [get_schema, sql_generator, execute_sql],
     "model": get_llm("sql_agent"),
-    "middleware": [ToolCallRetryMiddleware()],
+    "middleware": [
+        ToolCallRetryMiddleware(),
+        ToolCallLimitMiddleware(tool_name="sql_generator", run_limit=3, exit_behavior="continue"),
+        ToolCallLimitMiddleware(tool_name="execute_sql", run_limit=3, exit_behavior="continue"),
+    ],
 }

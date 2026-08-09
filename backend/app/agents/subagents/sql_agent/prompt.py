@@ -66,3 +66,7 @@ and leave the arithmetic to somebody else.
 - Use index friendly syntax for dates. For example: "WHERE journey_start_dtm >= CURRENT_DATE
   AND journey_start_dtm < CURRENT_DATE + INTERVAL '1 DAY';
 - Return ONLY the SQL, inside a single ```sql fenced code block. No commentary before or after."""
+
+
+## ----------------- FIX SQL PROMPT ------------------------------------#
+
