@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.orchestrator.context import AgentContext
 from app.agents.orchestrator.deep_agent import agent
+from app.agents.verifier.verify import verify_turn
 from app.core.dependencies import CurrentUser
 from app.core.logging import get_logger, log_duration
 from app.db.models import Message
@@ -34,6 +35,11 @@ class MessageResponse(BaseModel):
     content: str
     sql: Optional[str] = None
     routed_to: Optional[str] = None
+    # an independent review of the approach behind this turn — see app/agents/verifier. None for
+    # turns that never delegated, or where the review itself failed; never re-derived on reopen,
+    # since a review is a judgement about the steps taken, not something that goes stale like rows
+    # would.
+    reasoning: Optional[str] = None
     created_at: datetime
     # only filled in when a conversation is being reopened — see `of`
     data: Optional[QueryData] = None
@@ -49,6 +55,7 @@ class MessageResponse(BaseModel):
             content=message.content,
             sql=message.sql,
             routed_to=message.routed_to,
+            reasoning=message.reasoning,
             created_at=message.created_at,
             data=result_service.from_storage(message.result_data) if with_data else None,
         )
@@ -62,6 +69,7 @@ class ChatResponse(BaseModel):
     reply: str
     routed_to: str
     sql: Optional[str] = None
+    reasoning: Optional[str] = None
     data: Optional[QueryData] = None
     message: MessageResponse
 
@@ -134,6 +142,12 @@ async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> 
     data = result_service.from_agent_files(result.get("files", {}))
     sql = result_service.sql_from_agent_files(result.get("files", {}))
 
+    # separate call, after the answer is already decided: the verifier reviews what just happened,
+    # it does not take part in producing it. Best-effort — see verify_turn's docstring — so a slow
+    # or failed review costs the review, not the turn.
+    with log_duration("Verifier review"):
+        reasoning = await asyncio.to_thread(verify_turn, request.message, reply, result["messages"])
+
     # committed only now: a failure above leaves no half-written turn, and an abandoned new chat
     # leaves no empty row
     _, assistant = await chat_service.append_turn(
@@ -144,6 +158,7 @@ async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> 
         sql=sql,
         routed_to=routed_to,
         result_data=result_service.for_storage(data),
+        reasoning=reasoning,
     )
 
     return ChatResponse(
@@ -152,6 +167,7 @@ async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> 
         reply=reply,
         routed_to=routed_to,
         sql=sql,
+        reasoning=reasoning,
         data=data,
         message=MessageResponse.of(assistant),
     )

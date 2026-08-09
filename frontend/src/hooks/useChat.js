@@ -16,6 +16,7 @@ const toMessage = (m) => ({
   content: m.content,
   sql: m.sql,
   routedTo: m.routed_to,
+  reasoning: m.reasoning,
   data: m.data ?? null,
 });
 

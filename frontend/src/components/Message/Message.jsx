@@ -1,5 +1,5 @@
 import { Suspense, lazy } from "react";
-import SqlToggle from "./SqlToggle";
+import ReasoningToggle from "./ReasoningToggle";
 import Markdown from "./Markdown";
 import styles from "./Message.module.css";
 
@@ -20,7 +20,7 @@ export default function Message({ message }) {
             <ChartCard data={message.data} />
           </Suspense>
         )}
-        {message.sql != null && <SqlToggle sql={message.sql} />}
+        {message.reasoning != null && <ReasoningToggle reasoning={message.reasoning} />}
       </div>
     </div>
   );

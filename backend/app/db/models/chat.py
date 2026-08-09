@@ -90,6 +90,12 @@ class Message(Base):
     sql: Mapped[str | None] = mapped_column(Text, nullable=True)
     routed_to: Mapped[str | None] = mapped_column(String(32), nullable=True)
 
+    # assistant turns that delegated at least once: an independent after-the-fact review of the
+    # approach taken, from app/agents/verifier — what it did and whether that was the right way to
+    # do it, not another restatement of the answer. None for turns the verifier never ran on (a
+    # greeting, nothing delegated) or where the review call itself failed; see verify.py.
+    reasoning: Mapped[str | None] = mapped_column(Text, nullable=True)
+
     # assistant turns that ran a query: the rows behind the answer, in the same shape the API sends
     # them — columns, rows, the chart chosen for them, and the profile the chart controls are built
     # from. Stored because a chart is the part of an answer worth coming back to, and re-running the

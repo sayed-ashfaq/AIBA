@@ -1,0 +1,27 @@
+.wrapper {
+  margin-top: 8px;
+}
+
+.toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 0;
+  font-size: 13px;
+  color: var(--color-accent);
+  font-weight: 500;
+}
+
+.toggle:hover {
+  color: var(--color-accent-hover);
+}
+
+.block {
+  margin-top: 6px;
+  padding: 10px 14px;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-bg);
+  font-size: 13px;
+  color: var(--color-text-secondary);
+}
