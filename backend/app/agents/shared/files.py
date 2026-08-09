@@ -13,6 +13,7 @@ from typing import Optional
 from deepagents.backends import StateBackend
 
 RESULTS_DIR = "/results"
+CHARTS_DIR = "/charts"
 
 
 def write_result(columns: list[str], rows: list[dict], truncated: bool, sql: Optional[str] = None) -> str:
@@ -41,6 +42,26 @@ def read_result(path: str) -> dict:
     """Read back a payload written by write_result — e.g. python_agent loading a result sql_agent
     already fetched. Raises FileNotFoundError if nothing exists at the path (a typo, or a file from
     a different turn)."""
+    result = StateBackend().read(path)
+    if result.error or result.file_data is None:
+        raise FileNotFoundError(result.error or f"no file at {path}")
+    return json.loads(result.file_data["content"])
+
+
+def write_chart(image_base64: str, title: str, caption: str) -> str:
+    """Write one rendered chart to the virtual filesystem and return its path. Used by visualizer
+    after run_chart renders a PNG in the sandbox — same reasoning as write_result: title and caption
+    ride alongside the image because this file (not visualizer's intermediate tool-call text) is
+    what services/results.py reads back after the turn ends.
+    """
+    path = f"{CHARTS_DIR}/{uuid.uuid4().hex[:8]}.json"
+    payload = {"image_base64": image_base64, "title": title, "caption": caption}
+    StateBackend().write(path, json.dumps(payload))
+    return path
+
+
+def read_chart(path: str) -> dict:
+    """Read back a payload written by write_chart. Raises FileNotFoundError, same as read_result."""
     result = StateBackend().read(path)
     if result.error or result.file_data is None:
         raise FileNotFoundError(result.error or f"no file at {path}")

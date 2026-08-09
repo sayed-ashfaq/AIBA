@@ -1,5 +1,5 @@
-"""Assembles the orchestrator: a single `create_deep_agent` graph wired with the sql_agent and
-python_agent subagents (visualizer and knowledge_agent join once they're built), the orchestrator's
+"""Assembles the orchestrator: a single `create_deep_agent` graph wired with the sql_agent,
+python_agent, and visualizer subagents (knowledge_agent joins once it's built), the orchestrator's
 own instructions, and its runtime context schema.
 
 Replaces the hand-rolled supervisor in main_agent/main.py — routing between subagents becomes a
@@ -23,12 +23,13 @@ from app.agents.orchestrator.instructions import ORCHESTRATOR_INSTRUCTIONS
 from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
 from app.agents.subagents.python_agent.subagent import python_agent
 from app.agents.subagents.sql_agent.subagent import sql_agent
+from app.agents.subagents.visualizer.subagent import visualizer
 from app.core.llm import get_llm
 
 agent = create_deep_agent(
     model=get_llm("main_agent"),
     system_prompt=ORCHESTRATOR_INSTRUCTIONS,
-    subagents=[sql_agent, python_agent],
+    subagents=[sql_agent, python_agent, visualizer],
     middleware=[TodoListMiddleware(), ToolCallRetryMiddleware()],
     context_schema=AgentContext,
 )

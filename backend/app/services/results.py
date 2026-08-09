@@ -1,9 +1,9 @@
 """The rows behind an answer — on the wire, in the database, and back into the agent.
 
-One shape serves all three, which is the point: the client renders a chart from it, the message row
-stores it, and a follow-up like "show that as a pie chart" reads it back rather than re-running the
-query. Re-running would be slower and, worse, dishonest — the numbers would be today's, sitting
-under yesterday's prose.
+One shape serves all three, which is the point: the client shows a chart from it, the message row
+stores it, and a follow-up like "show that as a pie chart" reads the rows back rather than
+re-running the query. Re-running would be slower and, worse, dishonest — the numbers would be
+today's, sitting under yesterday's prose.
 
 The two directions are deliberately unequal. Writing is best-effort: a payload that can't be stored
 costs the chart on reload, never the answer itself. Reading is defensive: a payload written by an
@@ -15,9 +15,8 @@ from typing import Any, Optional
 
 from pydantic import BaseModel, ValidationError
 
-from app.agents.shared.files import RESULTS_DIR
+from app.agents.shared.files import CHARTS_DIR, RESULTS_DIR
 from app.agents.subagents.sql_agent.db import QueryResult
-from app.agents.subagents.visualizer.charts import ChartSpec
 from app.agents.subagents.visualizer.profile import profile_result
 from app.core.logging import get_logger
 
@@ -28,6 +27,11 @@ logger = get_logger(__name__)
 # byte budget bounds both. Nothing visible is lost at this size: the client plots at most 1000
 # points and tables 200, so a result trimmed to fit renders identically to the one that ran.
 MAX_STORED_BYTES = 256_000
+
+# Ceiling on the chart image's own base64 payload, tracked separately from MAX_STORED_BYTES: a
+# base64 PNG can't be thinned the way rows can, so a chart over budget is dropped outright rather
+# than costing the whole turn's row data its storage.
+MAX_CHART_BASE64_BYTES = 500_000
 
 
 class ColumnInfo(BaseModel):
@@ -52,41 +56,56 @@ class QueryData(BaseModel):
     # the result hit the row cap and there is likely more behind it — the client should say so
     # rather than presenting a capped result as complete
     truncated: bool
-    # how to draw this, when there's a chart worth drawing. Null is ordinary — most answers are a
-    # sentence, and a chart of them would be decoration.
-    chart: Optional[ChartSpec] = None
-    # sent whenever rows are, chart or not: it's what lets the client offer a different chart than
-    # the one chosen here without asking the server again
+    # a chart the visualizer subagent drew from these rows, as a base64-encoded PNG the client can
+    # show directly. None is ordinary — most answers are a sentence, and not every turn delegates
+    # to visualizer at all.
+    chart_image: Optional[str] = None
+    chart_title: Optional[str] = None
+    chart_caption: Optional[str] = None
+    # sent whenever rows are, chart or not: it's what lets the client build its own controls (which
+    # columns are measures, which are labels) without asking the server again
     profile: list[ColumnInfo] = []
 
 
-def _latest_result_payload(files: dict) -> Optional[dict]:
-    """The most recently written /results/*.json payload in one turn's virtual filesystem, or None
-    if sql_agent never queried data. A turn can delegate more than once (e.g. "compare this month
+def _latest(files: dict, directory: str) -> Optional[dict]:
+    """The most recently written `{directory}/*.json` payload in one turn's virtual filesystem, or
+    None if nothing was written there. A turn can delegate more than once (e.g. "compare this month
     to last month"), so more than one file can exist — the most recent one is what the
     orchestrator's final answer was actually grounded in."""
-    candidates = {path: fd for path, fd in files.items() if path.startswith(RESULTS_DIR + "/")}
+    candidates = {path: fd for path, fd in files.items() if path.startswith(directory + "/")}
     if not candidates:
         return None
     latest_path = max(candidates, key=lambda p: candidates[p].get("modified_at") or candidates[p].get("created_at") or "")
     return json.loads(candidates[latest_path]["content"])
 
 
+def _latest_result_payload(files: dict) -> Optional[dict]:
+    return _latest(files, RESULTS_DIR)
+
+
+def _latest_chart_payload(files: dict) -> Optional[dict]:
+    return _latest(files, CHARTS_DIR)
+
+
 def from_agent_files(files: dict) -> Optional[QueryData]:
-    """The rows behind one turn's answer, or None unless sql_agent actually queried data. No chart
-    yet — that's the visualizer subagent's job, not built yet — so this is rows and their shape
-    (via profile_result) only."""
+    """The rows (and, if visualizer ran, the chart) behind one turn's answer, or None unless
+    sql_agent actually queried data. A chart is only ever attached alongside the rows it was drawn
+    from — visualizer has no data of its own, so a chart file with no result file can't happen."""
     payload = _latest_result_payload(files)
     if payload is None:
         return None
 
     result = QueryResult(columns=payload["columns"], rows=payload["rows"], truncated=payload["truncated"])
     profile = profile_result(result)
+    chart = _latest_chart_payload(files)
     return QueryData(
         columns=result.columns,
         rows=result.rows,
         row_count=result.row_count,
         truncated=result.truncated,
+        chart_image=chart.get("image_base64") if chart else None,
+        chart_title=chart.get("title") if chart else None,
+        chart_caption=chart.get("caption") if chart else None,
         profile=[ColumnInfo(name=c.name, role=c.role, distinct=c.distinct, nulls=c.nulls) for c in profile.columns],
     )
 
@@ -134,6 +153,10 @@ def for_storage(data: Optional[QueryData]) -> Optional[dict]:
     try:
         stored = data.model_dump(mode="json")
         stored["rows"] = _fit(stored["rows"])
+        chart_image = stored.get("chart_image")
+        if chart_image and len(chart_image.encode()) > MAX_CHART_BASE64_BYTES:
+            logger.warning("dropping oversized chart image (%d bytes) from storage", len(chart_image.encode()))
+            stored["chart_image"] = stored["chart_title"] = stored["chart_caption"] = None
         return stored
     except (TypeError, ValueError) as exc:
         logger.warning("result payload not storable, keeping the answer without it: %s", exc)
