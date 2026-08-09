@@ -1,10 +1,16 @@
 """The python subagent's deep-agents config: name, description (what the orchestrator sees when
 deciding to delegate here, and — critically — how it's told apart from sql_agent), system prompt,
 and its one tool (run_python).
+
+ToolCallRetryMiddleware: Groq occasionally rejects a malformed tool call (wrong/missing parameter
+names) from this model family with a hard 400 that would otherwise crash the turn — see its
+docstring. A subagent's middleware is entirely its own; it doesn't inherit whatever the main agent
+or another subagent declares, so this has to be listed here too, not just on the orchestrator.
 """
 
 from deepagents import SubAgent
 
+from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
 from app.agents.subagents.python_agent.prompt import PYTHON_AGENT_PROMPT
 from app.agents.subagents.python_agent.tools import run_python
 from app.core.llm import get_llm
@@ -22,4 +28,5 @@ python_agent: SubAgent = {
     "system_prompt": PYTHON_AGENT_PROMPT,
     "tools": [run_python],
     "model": get_llm("python_agent"),
+    "middleware": [ToolCallRetryMiddleware()],
 }

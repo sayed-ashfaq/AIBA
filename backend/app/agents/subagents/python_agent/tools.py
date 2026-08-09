@@ -2,6 +2,14 @@
 files sql_agent already wrote into pandas DataFrames, runs model-written code against them in
 shared.sandbox's resource-limited subprocess, and writes whatever comes back as a new result file —
 same shape and same virtual-filesystem convention sql_agent's execute_sql uses.
+
+Deliberately NOT registered as "python" (tried that — see git history): gpt-oss models were trained
+on OpenAI's "harmony" format, which bakes in a strong prior for what a tool named exactly "python"
+looks like (OpenAI's own hosted code-interpreter shape). That prior can override the JSON schema we
+actually provide for our tool of the same name, producing calls with invented arguments
+(file_path/operation/description-shaped, not our real code/data_paths) that Groq's strict
+validation then rejects. Naming it something the model has no baked-in expectations for removes the
+trigger for that override rather than just hoping the real schema wins.
 """
 
 from typing import Optional
@@ -25,9 +33,13 @@ FULL_INLINE_THRESHOLD = 20
 SAMPLE_ROWS = 10
 
 
-@tool
+@tool("run_data_code")
 def run_python(code: str, data_paths: Optional[list[str]] = None) -> str:
     """Run pandas/numpy code against one or more result files sql_agent already wrote.
+
+    Takes exactly two arguments — `code` (a string of pandas/numpy) and `data_paths` (a list of
+    file path strings). No other argument names are accepted; do not invent a `file_path`,
+    `operation`, or `description` argument — those do not exist on this tool.
 
     data_paths: the file path(s) sql_agent reported (e.g. "/results/a1b2c3d4.json") — one per
     dataset the code needs. Required — this tool has no data of its own. Inside the sandbox, each
