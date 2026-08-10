@@ -7,8 +7,8 @@ export default function HomePage({ auth }) {
     <div className={styles.page}>
       <header className={styles.header}>
         <div className={styles.brand}>
-          <h1>NL2SQL</h1>
-          <span>Talk with your database</span>
+          <h1>AIBA</h1>
+          <span>Your Business Assistant</span>
         </div>
       </header>
 

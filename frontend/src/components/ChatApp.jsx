@@ -53,8 +53,8 @@ export default function ChatApp({ auth }) {
                 <SidebarIcon />
               </button>
             )}
-            <h1>NL2SQL</h1>
-            <span>Talk with your database</span>
+            <h1>AIBA</h1>
+            <span>Your Business Assistant</span>
           </div>
           <div className={styles.headerActions}>
             <ConnectionBar

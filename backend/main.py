@@ -15,7 +15,7 @@ from app.router.connections import router as connections_router
 setup_logging()
 logger = get_logger(__name__)
 
-app = FastAPI(title="NL2SQL")
+app = FastAPI(title="AIBA")
 
 # local dev frontend (Vite) — a regex, not a fixed port, because Vite silently moves to the next
 # free port (5174, 5175, ...) if 5173 is already taken by another instance. Tighten this to a
