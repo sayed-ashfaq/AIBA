@@ -1,41 +1,60 @@
-# AIBA - Aritifical Intelligence Business Analyst - Current Version
+# AIBA — Your AI Business Analyst
 
-## CEO, Founders, Business Owners favorite Agent
-- The agent that can understand business, have access to the data
-- answers Business questions, how are things going on in the business, by retriving data. 
-- Helps analyse trends, compare revenue, find anomolies
+AIBA lets you ask questions about your business, in plain English, and get straight answers — no spreadsheets, no SQL, no waiting on someone else to pull a report.
 
+> "Which customers brought in the most revenue last year?"
+> "Why did deliveries slow down in March?"
+> "Show me monthly sales as a chart."
 
+Ask like you would ask a person. AIBA looks at your business data and answers.
 
-### Current Architecture
+## Who this is for
 
+Founders, business owners, and managers who understand their business but don't write code. If you can describe the question, AIBA can go find the answer.
 
-### Main Agent
+## What you get back
 
-Should able to handle two jobs
+- **A plain-English answer** — not a table of numbers to interpret yourself.
+- **A chart**, when a picture makes the trend clearer than words.
+- **The receipts** — every answer can show you exactly what data it looked at, so you're never just taking its word for it.
 
-1. Understand the business question, ask questions if needed to understand the problem better. 
-2. Orchestrater
-    - plan - break into tasks - delegate the agents - monitor
-    - have access to it's private folder to store the files.
+## Is my data safe?
 
+- AIBA only **reads** your data. It cannot change, delete, or add anything to your database — that's enforced in multiple independent ways, not just a polite request to the AI.
+- Your database login details are encrypted, and only accessible to you.
+- Sign in with Google or an email/password — your account and your connected data are yours alone.
 
-### Sub Agents:
+## How it works, in one picture
 
-SQL Agent: Able to write sql and get the data along with synthesizer
-- Tools: { schema_retriever, sql_validator, execute_sql, fix_sql(max 3 times), synthesizer }
+```
+You ask a question
+        |
+        v
+AIBA figures out what you need and looks at your data
+        |
+        v
+You get an answer — with a chart if it helps, and the data to back it up
+```
 
-Visulizer agent: if data can visualized it will turn that into visulization. 
-- Tools: {python_sandbox}
-- Here, based on data we have got, someone should decide whether the answer needs the visulization or not.
-- It should be parallel, once the data has retrived, it should pass it to the visualizer
+Behind the scenes, AIBA is a small team of specialized AI agents working together and double-checking each other's work — but you never need to think about that part. You just ask.
 
-Python_agent: for logical operations of retrieved data
-Tools: {python sandbox}
+## Meet the team
 
-Knowledge Agent: able to answer questions related to company or anything
-- Tools: {RAG, web_search}
+| Agent | Think of it as... | What it does |
+|---|---|---|
+| **Orchestrator** | The manager | Reads your question, decides which specialist(s) below can answer it, and hands you the final answer |
+| **SQL Agent** | The data specialist | Writes a query, checks it's safe (read-only, nothing that could change your data), runs it, and hands back the numbers |
+| **Python Agent** | The analyst | Takes numbers already fetched and does the math — growth rates, comparisons, combining results — never invents a number that isn't backed by real data |
+| **Visualizer** | The chart maker | Turns a result into a chart, in a safe sandbox, when a picture explains it better than a sentence |
+| **Verifier** | The reviewer | Checks, after the fact, that the approach the team took actually made sense for your question |
+| **Knowledge Agent** | *(coming soon)* | Will answer general company-knowledge questions beyond what's in your database |
 
+Each specialist only has the tools it needs for its one job — the data specialist can query and double-check its own queries, the analyst can only crunch numbers that were already fetched, the chart maker can only draw pictures of real results. Nobody can touch your data outside of that.
 
-### Other things to consider
-- Once we retreive the data, we should store that data somewhere and shared across the agents so that they can use it for analysis.
+## Status
+
+AIBA is early and under active development. It's already useful for straightforward business questions (revenue, top customers, trends over time); more complex questions are still being hardened. Think of it as a capable analyst who's still learning the ropes — worth double-checking on anything high-stakes for now.
+
+## Want to try it or set it up?
+
+Getting AIBA running today still takes a developer's help — see `dev-notes/how_to_run.md`, or just ask the person who shared this with you.
