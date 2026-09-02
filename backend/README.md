@@ -120,9 +120,10 @@ Key calls locked in so far:
 | Package manager | uv (based on current `pyproject.toml` setup) |
 
 **Model per agent** (different models per node, not one everywhere) — locked in, set via env in `app/config.py`:
-- Main Agent (routing + chit-chat) — `llama-3.3-70b-versatile`.
+- Main Agent (routing + chit-chat) — `openai/gpt-oss-120b`.
 - SQL Agent (generation) — `openai/gpt-oss-120b`.
-- Knowledge Agent, Python Agent, Synthesizer — not assigned yet, will pick when each is actually built.
+- Python Agent, Visualizer, Verifier — `openai/gpt-oss-120b`.
+- Knowledge Agent — not assigned yet, will pick when it is actually built.
 
 ## Multi-agent shape
 

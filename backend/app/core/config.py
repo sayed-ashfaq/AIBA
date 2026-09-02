@@ -28,13 +28,8 @@ class Settings(BaseSettings):
     sql_agent_model: str = "openai/gpt-oss-120b"
     # same model as sql_agent — writing correct pandas is a comparable task to writing correct SQL
     python_agent_model: str = "openai/gpt-oss-120b"
-    # writes short matplotlib/seaborn snippets against data it's hardly ever asked to reshape first
-    # — a small, well-scoped generation task, so it has no use for a larger model than this
-    visualizer_model: str = "llama-3.3-70b-versatile"
-    # reviews a turn after the fact and has to actually catch a bad approach, not just restate the
-    # answer fluently — the judgement this needs is closer to sql_agent's than to visualizer's, so
-    # it gets a full 70b rather than defaulting to the smallest model in the fleet
-    verifier_model: str = "llama-3.3-70b-versatile"
+    visualizer_model: str = "openai/gpt-oss-120b"
+    verifier_model: str = "openai/gpt-oss-120b"
 
     # app's own metadata store (saved DB connections), separate from any target DB
     metadata_database_url: str
