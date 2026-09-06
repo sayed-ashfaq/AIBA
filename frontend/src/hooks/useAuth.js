@@ -30,5 +30,11 @@ export function useAuth() {
     setUser(null);
   }, []);
 
-  return { user, isLoading, login, signup, logout };
+  const setSchemaMode = useCallback(async (mode) => {
+    const updated = await api.setSchemaMode(mode);
+    setUser(updated);
+    return updated;
+  }, []);
+
+  return { user, isLoading, login, signup, logout, setSchemaMode };
 }

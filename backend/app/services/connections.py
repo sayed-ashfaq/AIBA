@@ -353,7 +353,9 @@ async def get_active_db_context(session: AsyncSession, user: User) -> Optional[D
 
     annotations = await _annotations_map(session, entry.connection_id)
 
-    mode = settings.schema_mode
+    # per-user choice, persisted on the users row. settings.schema_mode is only the fallback for a
+    # row somehow missing it (shouldn't happen — the column is NOT NULL DEFAULT 'plain').
+    mode = getattr(user, "schema_mode", None) or settings.schema_mode
     graph = None
     if mode == "graph":
         try:

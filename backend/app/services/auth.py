@@ -170,6 +170,21 @@ async def authenticate(session: AsyncSession, email: str, password: str) -> User
     return user
 
 
+SCHEMA_MODES = ("plain", "graph")
+
+
+async def set_schema_mode(session: AsyncSession, user: User, mode: str) -> User:
+    """Persist the user's schema-delivery choice. `mode` must be one of SCHEMA_MODES; the router
+    has already validated it, this is defence in depth."""
+    if mode not in SCHEMA_MODES:
+        raise ValueError(f"unknown schema_mode {mode!r}")
+    user.schema_mode = mode
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+    return user
+
+
 # --- google ---------------------------------------------------------------------------------------
 
 

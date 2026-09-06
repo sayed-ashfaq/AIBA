@@ -1,6 +1,6 @@
 import uuid
 from datetime import datetime
-from typing import Optional
+from typing import Literal, Optional
 
 from fastapi import APIRouter, Request, Response
 from fastapi.responses import RedirectResponse
@@ -41,6 +41,9 @@ class UserResponse(BaseModel):
     # tells a frontend whether to offer "change password" or "set a password" on a Google-only
     # account, without ever exposing the hash itself
     has_password: bool
+    # "plain" (full flat schema) or "graph" (experimental schema_linking slice). The frontend
+    # toggle reads and writes this.
+    schema_mode: str
     created_at: datetime
 
     @classmethod
@@ -52,8 +55,13 @@ class UserResponse(BaseModel):
             avatar_url=user.avatar_url,
             email_verified=user.email_verified,
             has_password=user.password_hash is not None,
+            schema_mode=user.schema_mode,
             created_at=user.created_at,
         )
+
+
+class SchemaModeRequest(BaseModel):
+    schema_mode: Literal["plain", "graph"]
 
 
 def _set_session_cookie(response: Response, token: str) -> None:
@@ -130,6 +138,17 @@ async def logout_all(user: CurrentUser, response: Response, session: SessionDep)
 @router.get("/me", response_model=UserResponse)
 async def me(user: CurrentUser) -> UserResponse:
     return UserResponse.of(user)
+
+
+@router.patch("/me/schema-mode", response_model=UserResponse)
+async def set_schema_mode(
+    payload: SchemaModeRequest, user: CurrentUser, session: SessionDep
+) -> UserResponse:
+    """Switch how this user's SQL agent gets its schema. Takes effect on the next message — the
+    active connection's linking graph is built lazily on first use in graph mode."""
+    updated = await auth_service.set_schema_mode(session, user, payload.schema_mode)
+    logger.info("user %s set schema_mode=%s", updated.id, updated.schema_mode)
+    return UserResponse.of(updated)
 
 
 # --- google ---------------------------------------------------------------------------------------

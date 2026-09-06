@@ -32,6 +32,11 @@ class User(Base):
     # soft off-switch: revoking access shouldn't destroy the user's chats and connections
     is_active: Mapped[bool] = mapped_column(Boolean, server_default=text("true"))
 
+    # how the SQL agent gets its schema: "plain" (full flat schema) or "graph" (experimental
+    # schema_linking slice). Per-user while the graph approach is being validated; see
+    # app.services.connections.get_active_db_context.
+    schema_mode: Mapped[str] = mapped_column(String(16), server_default=text("'plain'"))
+
     # which target database this user is currently pointed at. The live engine lives in
     # app.services.connection_registry (process memory); this column is what lets a restart — or an
     # eviction from that registry — rebuild it lazily instead of making the user re-activate.

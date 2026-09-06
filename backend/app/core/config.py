@@ -32,8 +32,9 @@ class Settings(BaseSettings):
     verifier_model: str = "openai/gpt-oss-120b"
 
     # EXPERIMENTAL: "plain" hands the SQL agent the full flat schema (db.render_schema_text);
-    # "graph" runs schema_linking to hand it only the question-relevant slice. Global switch for
-    # now — a per-user setting replaces this once the approach is validated.
+    # "graph" runs schema_linking to hand it only the question-relevant slice. This is now just the
+    # fallback default — the live value is per-user (users.schema_mode), set via the UI toggle and
+    # read in connections.get_active_db_context.
     schema_mode: str = "plain"
 
     # app's own metadata store (saved DB connections), separate from any target DB

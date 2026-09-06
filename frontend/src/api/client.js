@@ -109,6 +109,15 @@ export function getCurrentUser() {
   return request("/auth/me");
 }
 
+// "plain" (full flat schema) or "graph" (experimental schema_linking slice). Returns the updated
+// user. Takes effect on the next chat message.
+export function setSchemaMode(schemaMode) {
+  return request("/auth/me/schema-mode", {
+    method: "PATCH",
+    body: JSON.stringify({ schema_mode: schemaMode }),
+  });
+}
+
 // full-page navigation, not fetch() — the browser itself has to follow the Google redirect chain
 export function googleLoginUrl() {
   return `${BASE_URL}/auth/google/login`;

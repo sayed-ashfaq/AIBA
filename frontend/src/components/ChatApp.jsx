@@ -67,7 +67,7 @@ export default function ChatApp({ auth }) {
               onDelete={connections.remove}
               onViewGraph={() => setIsGraphOpen(true)}
             />
-            <UserMenu user={auth.user} onLogout={auth.logout} />
+            <UserMenu user={auth.user} onLogout={auth.logout} onSetSchemaMode={auth.setSchemaMode} />
           </div>
         </header>
 
