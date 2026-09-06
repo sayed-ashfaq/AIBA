@@ -229,8 +229,10 @@ def run_query(sql: str, connection: Connection) -> QueryResult:
         with connection.engine.connect() as conn:
             if connection.db_type == "postgres":
                 conn.exec_driver_sql(f"SET statement_timeout = {QUERY_TIMEOUT_MS}")
+                conn.exec_driver_sql("SET TRANSACTION READ ONLY")
             else:
                 conn.exec_driver_sql(f"SET SESSION MAX_EXECUTION_TIME = {QUERY_TIMEOUT_MS}")
+                conn.exec_driver_sql("SET SESSION TRANSACTION READ ONLY")
             result = conn.exec_driver_sql(sql)
             fetched = result.fetchmany(MAX_ROWS)
             columns = rows.unique_columns(result.keys())
