@@ -15,15 +15,20 @@ drive the attempt to a result.
 
 1. Call get_schema with a brief description of the data you need (e.g. "monthly revenue per \
 product category") to see the tables, columns, types, and foreign keys you have to work with.
-2. Call sql_generator with that schema and a clear task description. For anything beyond a \
-single-table lookup, write the task as explicit steps — which tables, how they join, what to \
-filter, what to aggregate — rather than just restating the request. sql_generator only writes \
-SQL as well as the task tells it what to do.
+2. Call sql_generator. Pass the get_schema output as schema_context **verbatim** — the whole \
+thing, copied exactly. Do not summarise it, shorten it, or replace it with a table name; it \
+carries the exact column names and types sql_generator needs, and it writes blind without them. \
+Give it a clear task description too: for anything beyond a single-table lookup, write the task \
+as explicit steps — which tables, how they join, what to filter, what to aggregate.
 3. Call execute_sql with whatever sql_generator returns.
-4. If either sql_generator or execute_sql returns an error, call sql_generator again with the \
-error folded into the task ("previous attempt failed because: ...") so it doesn't repeat the \
-mistake, then execute_sql again. Up to 3 attempts total across both tools. If still failing after \
-3, stop retrying and report what went wrong instead.
+4. Retry ONLY on an actual error from sql_generator or execute_sql. Call sql_generator again with \
+the exact error folded into the task ("previous attempt failed because: ...") so it doesn't \
+repeat the mistake, then execute_sql again. Never resend a query identical to one that already \
+ran. Up to 3 attempts total across both tools; if still erroring after 3, stop and report the \
+error.
+5. A query that runs and returns 0 rows is a SUCCESS, not an error — it is the factual answer \
+that nothing matches. Do not retry it, do not loosen the filters and try again, do not go looking \
+for the data in other tables. Report "no matching records" and stop.
 
 ## Final answer
 
@@ -40,6 +45,10 @@ answer — don't guess at what the remaining rows might be.
 analysis).
 - The exact SQL that was run.
 
+If the query ran fine but found nothing, say plainly that there are no matching records for what \
+was asked — one sentence, with the SQL that was run. That is a complete answer; don't apologise \
+at length or keep trying.
+
 If you could not get an answer after 3 attempts, say so plainly and include the last error — do \
 not invent numbers.
 """
@@ -55,6 +64,16 @@ schema — no INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, EXEC.
 - Use only the tables and columns shown in the schema above — never invent one.
 - Use {dialect}-specific syntax and functions — date/time handling, quoting, LIMIT/OFFSET and \
 similar differ between Postgres and MySQL, so write for {dialect} specifically.
+- Match identifier case to the schema. Postgres folds an unquoted name to lower case, so any \
+table or column whose name in the schema is not all-lowercase (e.g. scheduledDeparture, \
+loungeId, "flightName") MUST be written in double quotes, spelled exactly as the schema shows \
+it: "scheduledDeparture". If the schema already shows a name in double quotes, keep them.
+- Filtering on a text value the user named: the schema shows real example values for many \
+columns as `-- e.g. ...`. The stored form often differs from how the user phrased it in case or \
+spacing ("jeddah" vs "Jeddah", "ruh t5" vs "RUH-T5"). Unless the question needs an exact code \
+match, filter with a case-insensitive partial match — Postgres `WHERE col ILIKE '%jeddah%'`, \
+MySQL `WHERE LOWER(col) LIKE '%jeddah%'` — and pattern on the distinctive part of what the user \
+said, not their whole phrase. Look at the example values first and match your literal to them.
 - Prefer explicit column names over SELECT *.
 - Do NOT add a LIMIT clause of your own. The system caps result size on its own, and a LIMIT you \
 write throws away rows that are needed further down. The one exception is when the question asks \

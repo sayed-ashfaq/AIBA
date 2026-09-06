@@ -184,6 +184,16 @@ def _introspect(engine: Engine) -> dict[str, TableSchema]:
     return tables
 
 
+def _quote_ident(name: str) -> str:
+    """An identifier as it must appear in SQL: bare when it's a plain lower-case name,
+    double-quoted otherwise. Postgres folds unquoted names to lower case, so a column
+    named `scheduledDeparture` in the catalogue only resolves as `"scheduledDeparture"`.
+    Showing it pre-quoted in the schema is what stops the generator guessing at the case."""
+    if name.islower() and name.replace("_", "").isalnum():
+        return name
+    return f'"{name}"'
+
+
 def render_schema_text(tables: dict[str, TableSchema], annotations: dict[tuple[str, str], str]) -> str:
     """Structural data (cached, expensive) + annotations (fresh, cheap) -> the text handed to the
     LLM. A pure function of its inputs so it's cheap to re-run on every request — annotations can
@@ -197,10 +207,10 @@ def render_schema_text(tables: dict[str, TableSchema], annotations: dict[tuple[s
             marker = " PK" if col.pk else ""
             col_comment = annotations.get((name, col.name))
             suffix = f"  -- {col_comment}" if col_comment else ""
-            lines.append(f"  - {col.name} ({col.type}){marker}{suffix}")
+            lines.append(f"  - {_quote_ident(col.name)} ({col.type}){marker}{suffix}")
         for fk in table.foreign_keys:
-            constrained = ", ".join(fk.columns)
-            referred = ", ".join(fk.referred_columns)
+            constrained = ", ".join(_quote_ident(c) for c in fk.columns)
+            referred = ", ".join(_quote_ident(c) for c in fk.referred_columns)
             lines.append(f"  - FK: {constrained} -> {fk.referred_table}({referred})")
         blocks.append("\n".join(lines))
     return "\n\n".join(blocks)

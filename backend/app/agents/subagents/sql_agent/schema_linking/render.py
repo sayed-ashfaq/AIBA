@@ -14,10 +14,19 @@ whichever schema mode is active.
 from app.agents.subagents.sql_agent.schema_linking import models
 
 
+def _q(name: str) -> str:
+    """An identifier as it must be written in SQL: bare if it's a plain lower-case
+    name, double-quoted otherwise (Postgres folds unquoted names to lower case, so
+    `scheduledDeparture` only works as `"scheduledDeparture"`)."""
+    if name.islower() and name.replace("_", "").isalnum():
+        return name
+    return f'"{name}"'
+
+
 def _column_line(col: models.Column) -> str:
     pk = " PK" if col.pk else ""
     hint = f"  -- e.g. {', '.join(col.sample_values)}" if col.sample_values else ""
-    return f"  - {col.name} ({col.type}){pk}{hint}"
+    return f"  - {_q(col.name)} ({col.type}){pk}{hint}"
 
 
 def _table_block(table: models.Table, *, include_fks: bool) -> str:
@@ -25,7 +34,7 @@ def _table_block(table: models.Table, *, include_fks: bool) -> str:
     lines = [head, *(_column_line(c) for c in table.columns)]
     if include_fks:
         lines += [
-            f"  - FK: {fk.from_column} -> {fk.to_table}({fk.to_column})"
+            f"  - FK: {_q(fk.from_column)} -> {fk.to_table}({_q(fk.to_column)})"
             for fk in table.foreign_keys
         ]
     return "\n".join(lines)
@@ -44,7 +53,7 @@ def render_focused(focused: models.FocusedSchema, sg: models.SchemaGraph) -> str
     ]
     if focused.edges:
         joins = "\n".join(
-            f"  {e.from_table}.{e.from_column} = {e.to_table}.{e.to_column}"
+            f"  {e.from_table}.{_q(e.from_column)} = {e.to_table}.{_q(e.to_column)}"
             for e in focused.edges
         )
     else:

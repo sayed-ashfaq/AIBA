@@ -38,6 +38,11 @@ FULL_INLINE_THRESHOLD = 20
 # without either tool response ballooning
 SAMPLE_ROWS = 10
 
+# a real schema is columns + types + FK lines; a schema_context shorter than this is a stub — the
+# agent passed a table name or a paraphrase instead of the get_schema output. Fall back to the full
+# schema so sql_generator isn't writing blind (this is the #1 cause of invented column names).
+_MIN_SCHEMA_CONTEXT = 120
+
 
 
 def resolve_schema(db_context, task: str) -> str:
@@ -98,6 +103,13 @@ def sql_generator(schema_context: str, task: str, runtime: ToolRuntime) -> str:
     db_context = runtime.context.db_context
     if db_context is None:
         return _NO_CONNECTION
+
+    if len(schema_context.strip()) < _MIN_SCHEMA_CONTEXT:
+        logger.warning(
+            "sql_generator got a %d-char schema_context — falling back to the full schema",
+            len(schema_context.strip()),
+        )
+        schema_context = db_context.schema_text
 
     system_prompt = SQL_GENERATION_PROMPT.format(dialect=db_context.db_type)
     content = f"Schema:\n{schema_context}\n\nTask:\n{task}"
