@@ -36,7 +36,6 @@ class Column:
     # list so a frozen Column stays fully immutable and hashable.
     sample_values: tuple[str, ...] = ()
 
-ear
 @dataclass(frozen=True)
 class FKEdge:
     """One foreign-key link.
