@@ -7,7 +7,13 @@ the connection's lifetime (ActiveConnection.schema_graph). This module only buil
 
 from sqlalchemy.engine import Engine
 
-from app.agents.subagents.sql_agent.schema_linking import embeddings, graph, introspection, models
+from app.agents.subagents.sql_agent.schema_linking import (
+    descriptions,
+    embeddings,
+    graph,
+    introspection,
+    models,
+)
 from app.core.logging import get_logger, log_duration
 
 logger = get_logger(__name__)
@@ -16,16 +22,27 @@ logger = get_logger(__name__)
 def embedding_text(table: models.Table) -> str:
     """The string embedded to represent a table for anchor matching.
 
-    Step 6 baseline: qualified name + column names. Step 7 replaces this with an
-    LLM-written one-line description (and folds in sample values); this is the
-    single place that changes.
+    With an LLM description (the normal case): the sentence plus the column list,
+    so both "what is this table" and column-term questions have something to
+    match. Without one (model omitted it / describe=False): fall back to the
+    Step 6 baseline of name + columns.
     """
-    return f"{table.name}: {', '.join(c.name for c in table.columns)}"
+    cols = ", ".join(c.name for c in table.columns)
+    if table.description:
+        return f"{table.description}\nColumns: {cols}"
+    return f"{table.name}: {cols}"
 
 
-def build_schema_graph(engine: Engine, *, sample: bool = True) -> models.SchemaGraph:
+def build_schema_graph(
+    engine: Engine, *, sample: bool = True, describe: bool = True
+) -> models.SchemaGraph:
     with log_duration("Build schema graph"):
         tables = introspection.introspect(engine, sample=sample)
+
+        if describe:
+            for name, text in descriptions.describe_tables(tables).items():
+                tables[name].description = text
+
         g = graph.build_graph(tables)
 
         # INVARIANT: table_names order == embedding row order. linking maps a
