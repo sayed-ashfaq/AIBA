@@ -49,8 +49,15 @@ def resolve_schema(db_context, task: str) -> str:
 
     from app.agents.subagents.sql_agent import schema_linking
 
-    focused = schema_linking.link(task, db_context.schema_graph)
-    sliced = schema_linking.render_focused(focused, db_context.schema_graph)
+    try:
+        focused = schema_linking.link(task, db_context.schema_graph)
+        sliced = schema_linking.render_focused(focused, db_context.schema_graph)
+    except Exception:
+        # graph mode is experimental — never let a linking failure break a query the flat
+        # schema could have answered
+        logger.warning("graph schema linking errored for %r — using full schema", task, exc_info=True)
+        return db_context.schema_text
+
     if sliced:
         logger.info(
             "graph schema: %d tables for task %r (vs %d in full schema)",

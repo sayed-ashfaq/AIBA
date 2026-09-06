@@ -20,8 +20,10 @@ caller's decision, not this module's.
 Depends on embeddings + graph + models + the LLM. No database access.
 """
 
+import json
+import re
+
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel, Field
 
 from app.agents.subagents.sql_agent.schema_linking import embeddings, graph, models
 from app.core.llm import get_llm
@@ -39,25 +41,67 @@ DEFAULT_NEIGHBOUR_HOPS = 0   # sphere expansion off by default — 1-hop explode
 _HUB_DEGREE = 8             # an anchor with this many FK edges is a hub; don't sphere-expand it
 
 
-class _Entities(BaseModel):
-    entities: list[str] = Field(description="1 to 5 short noun phrases")
-
+_MAX_ENTITIES = 5
 
 _ENTITY_PROMPT = """Extract the database entities this question is about — the \
 things data is stored about (people, objects, transactions, business concepts), \
 not the metrics, aggregates, or time ranges.
 
-Return 1 to 5 short noun phrases, phrased the way a database table would be named \
-(singular or plural nouns). For "average order value per supplier last month" \
-return ["customer orders", "suppliers"] — never "average" or "last month"."""
+Reply with 1 to 5 short noun phrases, phrased the way a database table would be \
+named (singular or plural nouns), as a comma-separated list on a single line and \
+nothing else. For "average order value per supplier last month" reply exactly:
+customer orders, suppliers
+
+Never include "average", "last month", counts, or sums."""
+
+
+def _parse_entities(text: str) -> list[str]:
+    """Pull the noun phrases out of the model's reply. Tolerates a plain
+    comma/newline list, a JSON array (`["a", "b"]`), or either wrapped in a code
+    fence — gpt-oss on Groq drifts between these. Returns [] if nothing usable."""
+    text = (text or "").strip()
+    if text.startswith("```"):
+        text = text.strip("`").strip()
+        if text[:4].lower() == "json":
+            text = text[4:].strip()
+
+    # a JSON array anywhere in the reply wins (that's the shape the model 400'd with
+    # when it was being forced into a tool call)
+    match = re.search(r"\[.*?\]", text, re.S)
+    if match:
+        try:
+            data = json.loads(match.group(0))
+            if isinstance(data, list):
+                text = ", ".join(str(x) for x in data)
+        except ValueError:
+            pass
+
+    out: list[str] = []
+    for part in re.split(r"[\n,]+", text):
+        phrase = part.strip().lstrip("-*•").strip().strip("\"'[]").strip()
+        if phrase and len(phrase) <= 60 and phrase.lower() not in {"json", "entities"}:
+            out.append(phrase)
+    return out
 
 
 def extract_entities(question: str) -> list[str]:
-    """LLM: question -> 1-5 short noun phrases naming the entities involved."""
-    llm = get_llm("main_agent").with_structured_output(_Entities)
-    with log_duration("Extract entities"):
-        result = llm.invoke([SystemMessage(content=_ENTITY_PROMPT), HumanMessage(content=question)])
-    entities = [e.strip() for e in result.entities if e and e.strip()]
+    """LLM: question -> up to 5 short noun phrases naming the entities involved.
+
+    Plain text, not structured output: gpt-oss on Groq intermittently answers a
+    forced tool call with bare content ("model did not call a tool" -> 400). Any
+    LLM or parse failure returns [] — the caller then falls back to the full
+    schema, which is always the safe default here.
+    """
+    try:
+        llm = get_llm("main_agent")
+        with log_duration("Extract entities"):
+            reply = llm.invoke(
+                [SystemMessage(content=_ENTITY_PROMPT), HumanMessage(content=question)]
+            )
+        entities = _parse_entities(reply.content)[:_MAX_ENTITIES]
+    except Exception:
+        logger.warning("entity extraction failed for %r — no anchors", question, exc_info=True)
+        return []
     logger.info("entities: %s", entities)
     return entities
 

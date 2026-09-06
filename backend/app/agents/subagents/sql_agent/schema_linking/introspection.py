@@ -10,6 +10,7 @@ No graph, no embeddings, no LLM. Reuses db.qualify / db.schemas_to_introspect so
 the qualified names line up exactly with the flat-schema path.
 """
 
+import re
 from contextlib import nullcontext
 from dataclasses import replace
 
@@ -32,12 +33,25 @@ _STATEMENT_TIMEOUT_MS = 5000  # a sampling query must never hold things up
 # category label. If ANY sampled value exceeds it we drop the whole column.
 _MAX_VALUE_LEN = 40
 
-# Never sample a column whose name contains one of these — secrets and contact
-# details must not reach a prompt or a log, regardless of cardinality.
+# Never sample a column whose name contains one of these — secrets, contact
+# details, personal identifiers and infra addresses must not reach a prompt or a
+# log, regardless of cardinality.
 _SENSITIVE_NAME_HINTS = (
     "password", "passwd", "secret", "token", "apikey", "api_key",
-    "hash", "salt", "email", "e_mail", "phone", "ssn",
+    "hash", "salt", "email", "e_mail", "mail", "phone", "mobile", "fax", "ssn",
     "creditcard", "credit_card", "cardnumber", "card_number", "url", "website",
+    "firstname", "first_name", "lastname", "last_name", "fullname", "full_name",
+    "username", "user_name", "smtp", "passport", "national_id", "nationalid",
+    "nationality", "iqama", "dob", "birth", "latitude", "longitude",
+    "ipaddr", "ip_addr", "ipaddress", "ip_address",
+)
+
+# A name check can't catch PII in a free-text or oddly-named column (a description
+# that happens to hold an email, a "gatewayTerminal" that holds an IP). As a
+# backstop, if any sampled value itself matches one of these, drop the column.
+_SENSITIVE_VALUE_PATTERNS = (
+    re.compile(r"[^\s@]+@[^\s@]+\.[^\s@]+"),        # email address
+    re.compile(r"\b\d{1,3}(?:\.\d{1,3}){3}\b"),     # IPv4 address
 )
 
 
@@ -159,6 +173,10 @@ def _sample_values(conn, engine: Engine, qualified_table: str, coldict: dict, si
     # One long value means the column holds free text, not labels — drop it whole
     # rather than keep a truncated-looking subset.
     if not values or any(len(v) > _MAX_VALUE_LEN for v in values):
+        return ()
+    # value-level PII backstop — never log the value, only the column it was in
+    if any(p.search(v) for v in values for p in _SENSITIVE_VALUE_PATTERNS):
+        logger.info("skipped sampling %s.%s — a value matched a sensitive pattern", qualified_table, col_name)
         return ()
     # dedupe after stripping ('S ' and 'S' collapse), preserve encounter order
     return tuple(list(dict.fromkeys(values))[:size])
