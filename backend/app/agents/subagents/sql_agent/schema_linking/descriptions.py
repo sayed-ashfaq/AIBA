@@ -2,16 +2,18 @@
 
 The baseline embedding text ("store: store_id, manager_staff_id, address_id,
 last_update") matches a question poorly — it's nowhere near "stores". A sentence
-("store holds each physical rental location, its manager and its address")
+("store defines each store location, linking it to its manager and address")
 embeds much closer, which is what fixes the Step 5 recall misses.
 
-Runs once, at build time, a dozen tables per LLM call. A table the model omits,
-or a batch whose call fails, is simply left out of the result — builder's
-embedding_text falls back to the column list for those.
+Runs once, at build time, a dozen tables per LLM call. The model is asked to
+begin each line with the exact table name and we parse the lines back — NOT
+structured output: gpt-oss on Groq ignores a forced tool call for a task whose
+natural answer is prose, and the request 400s. A table whose line we can't parse,
+or a batch whose call fails, is left out; builder's embedding_text falls back to
+the column list for those.
 """
 
 from langchain_core.messages import HumanMessage, SystemMessage
-from pydantic import BaseModel
 
 from app.agents.subagents.sql_agent.schema_linking import models
 from app.core.llm import get_llm
@@ -21,20 +23,16 @@ logger = get_logger(__name__)
 
 _BATCH_SIZE = 12
 
-_PROMPT = """For each table listed below, write ONE concise present-tense \
-sentence describing what its rows represent and the key attributes it holds. \
-Begin each sentence with the table name. Do not enumerate columns, do not add \
-commentary. Return exactly one entry per input table, using the exact table \
-name given (including any schema prefix)."""
+_PROMPT = """You are given a list of database tables, one per line, each as:
+    <table_name> | columns: ... | references: ... | sample values: ...
 
+For every table, write ONE concise present-tense sentence describing what its
+rows represent and the key things it holds. Output one line per table, in the
+form:
+    <table_name>: <sentence>
 
-class _Desc(BaseModel):
-    name: str
-    description: str
-
-
-class _DescList(BaseModel):
-    tables: list[_Desc]
+Use the exact table_name given (keep any schema prefix). Do not enumerate every
+column, do not add blank lines, headings, or commentary."""
 
 
 def _table_summary(table: models.Table) -> str:
@@ -52,10 +50,29 @@ def _table_summary(table: models.Table) -> str:
     return " | ".join(parts)
 
 
+def _parse(text: str, batch: set[str]) -> dict[str, str]:
+    """Pull `name: sentence` (or `name sentence`) lines out of the model's reply,
+    keeping only names that were in this batch."""
+    out: dict[str, str] = {}
+    for raw in text.splitlines():
+        line = raw.lstrip("-*• \t").strip()
+        if not line:
+            continue
+        # tolerate "name: sentence" and "name sentence"
+        head, sep, rest = line.partition(":")
+        if not sep or head.strip() not in batch:
+            head, _, rest = line.partition(" ")
+        name = head.strip()
+        desc = rest.strip()
+        if name in batch and desc:
+            out[name] = desc
+    return out
+
+
 def describe_tables(tables: dict[str, models.Table]) -> dict[str, str]:
-    """{table name: one-line description} for every table the model returned one for."""
+    """{table name: one-line description} for every table we could parse a line for."""
     names = sorted(tables)
-    llm = get_llm("sql_agent").with_structured_output(_DescList)
+    llm = get_llm("sql_agent")
     out: dict[str, str] = {}
 
     with log_duration(f"Describe {len(names)} tables"):
@@ -63,14 +80,14 @@ def describe_tables(tables: dict[str, models.Table]) -> dict[str, str]:
             batch = names[start : start + _BATCH_SIZE]
             body = "\n".join(_table_summary(tables[n]) for n in batch)
             try:
-                result = llm.invoke([SystemMessage(content=_PROMPT), HumanMessage(content=body)])
+                reply = llm.invoke([SystemMessage(content=_PROMPT), HumanMessage(content=body)])
             except Exception:
                 logger.warning("description batch at %d failed", start, exc_info=True)
                 continue
-            for entry in result.tables:
-                text = entry.description.strip()
-                if entry.name in tables and text:
-                    out[entry.name] = text
+            parsed = _parse(reply.content, set(batch))
+            if not parsed:
+                logger.warning("description batch at %d: nothing parsed from reply", start)
+            out.update(parsed)
 
     missing = [n for n in names if n not in out]
     if missing:

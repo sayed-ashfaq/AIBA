@@ -40,13 +40,39 @@ SAMPLE_ROWS = 10
 
 
 
+def resolve_schema(db_context, task: str) -> str:
+    """The schema text for a task. Plain mode: the full flat schema. Graph mode:
+    schema_linking's question-relevant slice, falling back to the full schema if
+    linking produced nothing."""
+    if getattr(db_context, "schema_mode", "plain") != "graph" or db_context.schema_graph is None:
+        return db_context.schema_text
+
+    from app.agents.subagents.sql_agent import schema_linking
+
+    focused = schema_linking.link(task, db_context.schema_graph)
+    sliced = schema_linking.render_focused(focused, db_context.schema_graph)
+    if sliced:
+        logger.info(
+            "graph schema: %d tables for task %r (vs %d in full schema)",
+            len(focused.path_tables), task, len(db_context.schema_graph.tables),
+        )
+        return sliced
+    logger.info("graph schema: linking found nothing for %r — using full schema", task)
+    return db_context.schema_text
+
+
 @tool
-def get_schema(runtime: ToolRuntime) -> str:
-    """Get the target database's schema: tables, columns, types, and foreign keys."""
+def get_schema(task: str, runtime: ToolRuntime) -> str:
+    """Get the database schema you need to write a query.
+
+    task: a brief description of the data you need (e.g. "monthly revenue per product
+    category"). In graph mode this selects the relevant tables; otherwise it's ignored
+    and the full schema is returned.
+    """
     db_context = runtime.context.db_context
     if db_context is None:
         return _NO_CONNECTION
-    return db_context.schema_text
+    return resolve_schema(db_context, task)
 
 
 @tool

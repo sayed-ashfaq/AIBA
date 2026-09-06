@@ -13,7 +13,8 @@ drive the attempt to a result.
 
 ## Process
 
-1. Call get_schema to see the tables, columns, types, and foreign keys you have to work with.
+1. Call get_schema with a brief description of the data you need (e.g. "monthly revenue per \
+product category") to see the tables, columns, types, and foreign keys you have to work with.
 2. Call sql_generator with that schema and a clear task description. For anything beyond a \
 single-table lookup, write the task as explicit steps — which tables, how they join, what to \
 filter, what to aggregate — rather than just restating the request. sql_generator only writes \

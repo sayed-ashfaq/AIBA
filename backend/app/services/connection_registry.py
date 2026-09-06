@@ -15,6 +15,7 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Optional
 
+from app.agents.subagents.sql_agent import schema_linking
 from app.agents.subagents.sql_agent.db import Connection
 from app.agents.subagents.sql_agent.schema_graph import SchemaGraph
 from app.core.logging import get_logger
@@ -33,7 +34,9 @@ class ActiveConnection:
     # built on first request to a graph view and cached for exactly as long as the connection it
     # describes. Kept here rather than in a cache keyed by id(engine): ids are recycled after
     # garbage collection, so a disposed engine's key could silently return another user's graph.
-    schema_graph: Optional[SchemaGraph] = None
+    schema_graph: Optional[SchemaGraph] = None  # prototype (schema_graph.py) — inspection UI only
+    # experimental schema_linking graph, built + cached on first graph-mode chat message
+    linking_graph: Optional[schema_linking.SchemaGraph] = None
 
 
 # ordered by least-recently-used first, so eviction is popitem(last=False)

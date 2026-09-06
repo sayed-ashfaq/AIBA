@@ -9,6 +9,7 @@ Every function takes the signed-in user and filters on their id. A connection is
 account that created it; there is no path here that reads a row without checking ownership.
 """
 
+import asyncio
 import uuid
 from typing import Optional
 
@@ -16,8 +17,9 @@ from sqlalchemy import delete, select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.agents.subagents.sql_agent import db
+from app.agents.subagents.sql_agent import db, schema_linking
 from app.agents.subagents.sql_agent.db import DbContext
+from app.core.config import settings
 from app.core.crypto import decrypt, encrypt
 from app.core.exceptions import (
     ConnectionNameTakenError,
@@ -26,7 +28,7 @@ from app.core.exceptions import (
     InvalidAnnotationError,
     NoActiveConnectionError,
 )
-from app.core.logging import get_logger
+from app.core.logging import get_logger, log_duration
 from app.db.models import SavedConnection, SchemaAnnotation, User
 from app.services import connection_registry
 from app.services.connection_registry import ActiveConnection
@@ -323,6 +325,18 @@ async def get_active_schema_text(session: AsyncSession, user: User) -> str:
     return db.render_schema_text(entry.connection.tables, annotations)
 
 
+async def _linking_graph(entry: ActiveConnection):
+    """The experimental schema_linking graph for this connection, built once (introspection +
+    per-table LLM descriptions + embeddings — seconds of blocking work, hence off-thread) and
+    cached on the registry entry for the connection's lifetime."""
+    if entry.linking_graph is None:
+        with log_duration("Build schema_linking graph"):
+            entry.linking_graph = await asyncio.to_thread(
+                schema_linking.build_schema_graph, entry.connection.engine
+            )
+    return entry.linking_graph
+
+
 async def get_active_db_context(session: AsyncSession, user: User) -> Optional[DbContext]:
     """Same as get_active_schema_text but returns None instead of raising when the user has no
     connection — the chat endpoint resolves this for every message, including ones that never reach
@@ -338,7 +352,19 @@ async def get_active_db_context(session: AsyncSession, user: User) -> Optional[D
         return None
 
     annotations = await _annotations_map(session, entry.connection_id)
+
+    mode = settings.schema_mode
+    graph = None
+    if mode == "graph":
+        try:
+            graph = await _linking_graph(entry)
+        except Exception:
+            logger.warning("schema_linking build failed for user %s — using plain schema", user.id, exc_info=True)
+            mode = "plain"
+
     return DbContext(
         connection=entry.connection,
         schema_text=db.render_schema_text(entry.connection.tables, annotations),
+        schema_mode=mode,
+        schema_graph=graph,
     )

@@ -7,7 +7,7 @@ functions that reach the network are wrapped in a thread to keep the event loop 
 
 import asyncio
 from dataclasses import dataclass, field
-from typing import Literal, Optional
+from typing import Any, Literal, Optional
 
 from sqlalchemy import create_engine, inspect
 from sqlalchemy.engine import Engine, make_url
@@ -79,7 +79,11 @@ class DbContext:
     """
 
     connection: Connection
-    schema_text: str
+    schema_text: str  # full flat schema — always present, the fallback for graph mode
+    # "plain" | "graph". In graph mode get_schema runs schema_linking against `schema_graph`
+    # (a schema_linking.SchemaGraph) and returns only the question-relevant slice.
+    schema_mode: str = "plain"
+    schema_graph: Any = None  # typed Any to avoid a db <-> schema_linking import cycle
 
     @property
     def db_type(self) -> str:

@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     visualizer_model: str = "openai/gpt-oss-120b"
     verifier_model: str = "openai/gpt-oss-120b"
 
+    # EXPERIMENTAL: "plain" hands the SQL agent the full flat schema (db.render_schema_text);
+    # "graph" runs schema_linking to hand it only the question-relevant slice. Global switch for
+    # now — a per-user setting replaces this once the approach is validated.
+    schema_mode: str = "plain"
+
     # app's own metadata store (saved DB connections), separate from any target DB
     metadata_database_url: str
     credentials_encryption_key: str
