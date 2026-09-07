@@ -1,7 +1,7 @@
 {
   "dataset": "dvdrental",
   "db": "dvdrental@localhost:5432",
-  "built_at": "2026-09-07T05:54:04.350063+00:00",
+  "built_at": "2026-09-07T06:24:42.950482+00:00",
   "item_count": 40,
   "items": {
     "L1-001": {
@@ -44,7 +44,7 @@
         ]
       ],
       "row_count": 1,
-      "elapsed_s": 0.002
+      "elapsed_s": 0.001
     },
     "L1-003": {
       "question": "How many customers are currently active?",
@@ -115,7 +115,7 @@
       "difficulty": "L1",
       "tags": [],
       "notes": "",
-      "ordered": true,
+      "ordered": false,
       "ordered_source": "explicit",
       "float_tol": 1e-06,
       "expects_chart": false,
@@ -177,7 +177,7 @@
         ]
       ],
       "row_count": 10,
-      "elapsed_s": 0.002
+      "elapsed_s": 0.001
     },
     "L1-007": {
       "question": "How many films have the highest rental rate?",
@@ -198,7 +198,7 @@
         ]
       ],
       "row_count": 1,
-      "elapsed_s": 0.002
+      "elapsed_s": 0.001
     },
     "L1-008": {
       "question": "How many actors have the last name Smith?",
@@ -240,7 +240,7 @@
         ]
       ],
       "row_count": 1,
-      "elapsed_s": 0.001
+      "elapsed_s": 0.003
     },
     "L1-010": {
       "question": "What is the average length of films rated R?",
@@ -3876,7 +3876,7 @@
         ]
       ],
       "row_count": 599,
-      "elapsed_s": 0.009
+      "elapsed_s": 0.01
     },
     "L2-002": {
       "question": "Which customers have spent more than $150?",
@@ -4023,7 +4023,7 @@
         ]
       ],
       "row_count": 21,
-      "elapsed_s": 0.007
+      "elapsed_s": 0.008
     },
     "L2-003": {
       "question": "What are the 10 most rented films?",
@@ -4120,7 +4120,7 @@
         ]
       ],
       "row_count": 2,
-      "elapsed_s": 0.011
+      "elapsed_s": 0.012
     },
     "L2-005": {
       "question": "Which film categories generate the most rental revenue?",
@@ -5431,7 +5431,7 @@
         ]
       ],
       "row_count": 181,
-      "elapsed_s": 0.003
+      "elapsed_s": 0.004
     },
     "L2-009": {
       "question": "Which film ratings have an average rental rate above $3?",
@@ -5485,7 +5485,7 @@
         ]
       ],
       "row_count": 2,
-      "elapsed_s": 0.007
+      "elapsed_s": 0.006
     },
     "L3-001": {
       "question": "How much revenue was generated in each month of 2007?",
@@ -8762,7 +8762,7 @@
         ]
       ],
       "row_count": 1,
-      "elapsed_s": 0.009
+      "elapsed_s": 0.006
     },
     "L3-006": {
       "question": "For each customer, rank them by total amount spent, from highest to lowest.",
@@ -12977,7 +12977,7 @@
         ]
       ],
       "row_count": 599,
-      "elapsed_s": 0.011
+      "elapsed_s": 0.008
     },
     "L3-007": {
       "question": "Which customers spent more than the average customer spend?",
@@ -14708,7 +14708,7 @@
         ]
       ],
       "row_count": 285,
-      "elapsed_s": 0.009
+      "elapsed_s": 0.007
     },
     "L3-008": {
       "question": "What are the three most rented films in each category?",
@@ -15024,8 +15024,8 @@
       "gold_sql": "WITH latest AS (SELECT customer_id, MAX(rental_date) AS latest_rental FROM rental GROUP BY customer_id) SELECT c.customer_id, c.first_name, c.last_name, l.latest_rental FROM latest l JOIN customer c ON c.customer_id = l.customer_id WHERE EXTRACT(EPOCH FROM l.latest_rental) > (SELECT AVG(EXTRACT(EPOCH FROM latest_rental)) FROM latest) ORDER BY c.customer_id;",
       "difficulty": "L3",
       "tags": [],
-      "notes": "'Average latest-rental date' = the mean of each customer's MAX(rental_date), compared in epoch seconds since AVG() is not defined on timestamps.",
-      "ordered": true,
+      "notes": "'Average latest-rental date' = the mean of each customer's MAX(rental_date), compared in epoch seconds since AVG() is not defined on timestamps. Row order is not part of the answer.",
+      "ordered": false,
       "ordered_source": "explicit",
       "float_tol": 1e-06,
       "expects_chart": false,
@@ -15986,7 +15986,7 @@
         ]
       ],
       "row_count": 158,
-      "elapsed_s": 0.006
+      "elapsed_s": 0.005
     },
     "L3-010": {
       "question": "For every store, calculate the percentage of its rentals that were returned within 7 days.",
@@ -16013,7 +16013,7 @@
         ]
       ],
       "row_count": 2,
-      "elapsed_s": 0.01
+      "elapsed_s": 0.007
     },
     "L4-001": {
       "question": "Which customers are our most valuable customers?",
@@ -16094,7 +16094,7 @@
         ]
       ],
       "row_count": 10,
-      "elapsed_s": 0.01
+      "elapsed_s": 0.007
     },
     "L4-002": {
       "question": "Which movies are underperforming?",
@@ -19265,7 +19265,7 @@
         ]
       ],
       "row_count": 525,
-      "elapsed_s": 0.027
+      "elapsed_s": 0.022
     },
     "L4-003": {
       "question": "Where are we strongest geographically?",
@@ -19825,7 +19825,7 @@
         ]
       ],
       "row_count": 108,
-      "elapsed_s": 0.015
+      "elapsed_s": 0.017
     },
     "L4-004": {
       "question": "Which film categories should management focus on?",
@@ -19942,7 +19942,7 @@
         ]
       ],
       "row_count": 16,
-      "elapsed_s": 0.031
+      "elapsed_s": 0.029
     },
     "L4-005": {
       "question": "Which customers are at risk of becoming inactive?",
@@ -22609,7 +22609,7 @@
         ]
       ],
       "row_count": 441,
-      "elapsed_s": 0.009
+      "elapsed_s": 0.008
     },
     "L4-006": {
       "question": "Which stores are performing best?",
@@ -26819,7 +26819,7 @@
         ]
       ],
       "row_count": 594,
-      "elapsed_s": 0.019
+      "elapsed_s": 0.026
     },
     "L4-008": {
       "question": "Which movies are good candidates for removing from the catalog?",
@@ -27092,7 +27092,7 @@
         ]
       ],
       "row_count": 42,
-      "elapsed_s": 0.01
+      "elapsed_s": 0.014
     },
     "L4-009": {
       "question": "Are expensive movies actually generating more revenue?",
@@ -34114,7 +34114,7 @@
         ]
       ],
       "row_count": 1000,
-      "elapsed_s": 0.017
+      "elapsed_s": 0.025
     },
     "L4-010": {
       "question": "Which customer segments deserve the most attention from management?",
@@ -34147,7 +34147,7 @@
         ]
       ],
       "row_count": 2,
-      "elapsed_s": 0.129
+      "elapsed_s": 0.184
     }
   }
 }

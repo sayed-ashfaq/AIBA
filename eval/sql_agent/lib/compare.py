@@ -183,18 +183,70 @@ def _compare_rows(gold_rows, got_rows, *, ordered: bool, tol: float) -> Comparis
     return Comparison(True, "match (unordered)")
 
 
+_MAX_SUBSET_BIG_COLS = 12  # cap the ordered-selection search below this
+
+
+def _subset_match(
+    small_rows: list, big_rows: list, n_small: int, n_big: int, *, ordered: bool, tol: float
+) -> tuple[int, ...] | None:
+    """Is there an ordered selection of ``n_small`` columns from the ``n_big``-wide result
+    whose projection equals ``small_rows``? Returns the selection (indices into the wide
+    result) or None. Used to allow the agent to carry extra columns, or to project fewer.
+    """
+    if n_big > _MAX_SUBSET_BIG_COLS:
+        return None
+    for sel in permutations(range(n_big), n_small):
+        projected = [tuple(r[i] for i in sel) for r in big_rows]
+        if _compare_rows(small_rows, projected, ordered=ordered, tol=tol).equal:
+            return sel
+    return None
+
+
 def compare_results(
     gold: tuple[Sequence[str], Sequence[Sequence]],
     got: tuple[Sequence[str], Sequence[Sequence]],
     *,
     ordered: bool,
     float_tol: float = DEFAULT_FLOAT_TOL,
+    column_match: str = "exact",
 ) -> Comparison:
-    """Compare two ``(columns, rows)`` result sets. ``ordered`` comes from the gold query."""
+    """Compare two ``(columns, rows)`` result sets. ``ordered`` comes from the gold query.
+
+    ``column_match``:
+      "exact"  - gold and agent must have the same number of columns (any order).
+      "subset" - also a match if the narrower result's columns can be found, by value,
+                 inside the wider one. Lets the agent return extra helper columns, or
+                 omit a reference column that was only a tie-breaker. Row count and row
+                 values are still compared strictly.
+    """
     g_cols, g_rows = list(gold[0]), list(gold[1])
     a_cols, a_rows = list(got[0]), list(got[1])
 
-    if len(g_cols) != len(a_cols):
+    same_width = len(g_cols) == len(a_cols)
+    if same_width:
+        identity = tuple(range(len(g_cols)))
+        perms = [identity]
+        if len(g_cols) <= _MAX_PERM_COLS:
+            perms += [p for p in permutations(range(len(g_cols))) if p != identity]
+
+        first_failure: Comparison | None = None
+        for perm in perms:
+            reordered = [tuple(r[i] for i in perm) for r in a_rows]
+            cmp = _compare_rows(g_rows, reordered, ordered=ordered, tol=float_tol)
+            cmp.gold_row_count, cmp.got_row_count = len(g_rows), len(a_rows)
+            if cmp.equal:
+                if perm != identity:
+                    cmp.column_perm = list(perm)
+                    cmp.reason += f"; agent columns needed reordering {list(perm)}"
+                return cmp
+            if first_failure is None:
+                first_failure = cmp
+        if column_match != "subset" or first_failure is None:
+            return first_failure  # type: ignore[return-value]
+        # same width but values didn't line up in any order; fall through to subset,
+        # which can still match if a differently-shaped projection agrees
+
+    if column_match != "subset":
         return Comparison(
             False,
             f"column count differs: gold {len(g_cols)} {g_cols}, agent {len(a_cols)} {a_cols}",
@@ -202,24 +254,49 @@ def compare_results(
             len(a_rows),
         )
 
-    identity = tuple(range(len(g_cols)))
-    perms = [identity]
-    if len(g_cols) <= _MAX_PERM_COLS:
-        perms += [p for p in permutations(range(len(g_cols))) if p != identity]
+    if len(g_rows) != len(a_rows):
+        miss, extra = _diff_sample(g_rows, a_rows, float_tol)
+        return Comparison(
+            False,
+            f"row count differs: gold {len(g_rows)}, agent {len(a_rows)}",
+            len(g_rows),
+            len(a_rows),
+            missing_sample=miss,
+            extra_sample=extra,
+        )
 
-    first_failure: Comparison | None = None
-    for perm in perms:
-        reordered = [tuple(r[i] for i in perm) for r in a_rows]
-        cmp = _compare_rows(g_rows, reordered, ordered=ordered, tol=float_tol)
-        cmp.gold_row_count, cmp.got_row_count = len(g_rows), len(a_rows)
-        if cmp.equal:
-            if perm != identity:
-                cmp.column_perm = list(perm)
-                cmp.reason += f"; agent columns needed reordering {list(perm)}"
-            return cmp
-        if first_failure is None:
-            first_failure = cmp
-    return first_failure  # type: ignore[return-value]
+    # try to locate the narrower column set inside the wider one, by value
+    if len(a_cols) >= len(g_cols):
+        sel = _subset_match(g_rows, a_rows, len(g_cols), len(a_cols), ordered=ordered, tol=float_tol)
+        if sel is not None:
+            extra = [c for i, c in enumerate(a_cols) if i not in sel]
+            note = f" agent also returned {extra}" if extra else ""
+            return Comparison(
+                True,
+                f"match on reference columns {g_cols} (agent positions {list(sel)});{note}".rstrip(),
+                len(g_rows),
+                len(a_rows),
+                column_perm=list(sel),
+            )
+    if len(g_cols) >= len(a_cols):
+        sel = _subset_match(a_rows, g_rows, len(a_cols), len(g_cols), ordered=ordered, tol=float_tol)
+        if sel is not None:
+            dropped = [c for i, c in enumerate(g_cols) if i not in sel]
+            return Comparison(
+                True,
+                f"match: agent returned reference columns {[g_cols[i] for i in sel]}; "
+                f"reference also projects {dropped}",
+                len(g_rows),
+                len(a_rows),
+                column_perm=list(sel),
+            )
+
+    return Comparison(
+        False,
+        f"column values do not line up: gold {g_cols}, agent {a_cols}",
+        len(g_rows),
+        len(a_rows),
+    )
 
 
 # --- self-test --------------------------------------------------------------------

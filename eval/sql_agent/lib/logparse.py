@@ -51,6 +51,11 @@ class LogSlice:
     result_truncated: bool | None = None
     graph_events: list = field(default_factory=list)  # graph-mode schema-linking log messages
     task_descriptions: list = field(default_factory=list)
+    # the SQL of the LAST execute_sql call in this slice, recovered from the indented body
+    # the middleware logs. The scorer falls back to this when the /chat response carries no
+    # `sql` (e.g. python_agent/visualizer produced the final turn).
+    last_executed_sql: str | None = None
+    executed_sql: list = field(default_factory=list)  # every execute_sql body, in order
 
     def as_dict(self) -> dict:
         return asdict(self)
@@ -63,10 +68,23 @@ def _sec(text: str) -> float | None:
 
 def parse(slice_text: str) -> LogSlice:
     out = LogSlice()
+    collecting_sql: list[str] | None = None  # buffer while inside an execute_sql body block
+
     for raw in slice_text.splitlines():
         m = _LINE.match(raw)
         if not m:
+            # continuation line: the indented SQL/code body the middleware prints under a call
+            if collecting_sql is not None and (raw.startswith("    ") or not raw.strip()):
+                collecting_sql.append(raw[4:] if raw.startswith("    ") else raw)
             continue
+
+        if collecting_sql is not None:  # the body block just ended
+            body = "\n".join(collecting_sql).strip()
+            if body:
+                out.executed_sql.append(body)
+                out.last_executed_sql = body
+            collecting_sql = None
+
         logger, msg = m["logger"], m["msg"]
 
         if logger.endswith("operation_logging"):
@@ -77,6 +95,9 @@ def parse(slice_text: str) -> LogSlice:
             secs = _sec(rest)
             if secs is not None:
                 out.tool_seconds[tool] = round(out.tool_seconds.get(tool, 0.0) + secs, 3)
+
+            if tool == "execute_sql" and not _FAILED.search(rest):
+                collecting_sql = []  # the next indented block is this query
 
             if tool == "task":
                 sub = _SUBAGENT.search(rest)
@@ -112,6 +133,12 @@ def parse(slice_text: str) -> LogSlice:
                 t = _TOOK.search(msg)
                 out.verifier_seconds = float(t["sec"]) if t else None
 
+    if collecting_sql is not None:  # slice ended mid-body
+        body = "\n".join(collecting_sql).strip()
+        if body:
+            out.executed_sql.append(body)
+            out.last_executed_sql = body
+
     out.redundant_sql_agent_calls = max(0, out.sql_agent_invocations - 1)
     return out
 
@@ -139,4 +166,6 @@ if __name__ == "__main__":
     assert r.rows_written == 1 and r.result_truncated is False, r
     assert r.total_completion_seconds == 9.10 and r.verifier_seconds == 0.60, r
     assert r.tool_seconds["task"] == 5.98, r.tool_seconds
+    assert r.last_executed_sql == "SELECT count(*) FROM film", repr(r.last_executed_sql)
+    assert r.executed_sql == ["SELECT count(*) FROM film"], r.executed_sql
     print("logparse self-test passed:", r.as_dict())

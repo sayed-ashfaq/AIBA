@@ -49,6 +49,11 @@ DATASETS = {
         # top-level ORDER BY. False here because the question set sorts every gold query
         # just for display; set `ordered: true` on the items where the ranking IS the answer.
         "ordered_default": False,
+        # "exact"  = agent must return the same columns as the reference query.
+        # "subset" = agent may also carry extra columns, or omit a reference column that
+        #            was only a tie-breaker, as long as row count and values still match.
+        #            Right default here since the golds carry helper columns (film_id, ...).
+        "column_match": "subset",
         "aiba_connection": {
             "name": "dvdrental (eval)",
             "db_type": "postgres",

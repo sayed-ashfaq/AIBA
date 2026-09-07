@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import config  # noqa: E402
-from lib import compare, dbio  # noqa: E402
+from lib import compare, dbio, logparse  # noqa: E402
 
 # Verdicts, worst-to-best. exec_mismatch and agent_sql_error are the ones to eyeball.
 VERDICTS = [
@@ -61,6 +61,12 @@ def _load_prior_review(path: Path) -> dict[str, dict]:
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--run", required=True, help="path to a run directory produced by run_eval.py")
+    ap.add_argument(
+        "--exact-columns",
+        action="store_true",
+        help="require the agent's columns to match the reference exactly "
+        "(overrides the dataset's column_match setting)",
+    )
     args = ap.parse_args()
 
     run_dir = Path(args.run)
@@ -75,6 +81,9 @@ def main() -> int:
         raise SystemExit(f"missing {golden_path} - run build_golden.py --dataset {dataset_name}")
     golden = json.loads(golden_path.read_text())["items"]
 
+    column_match = "exact" if args.exact_columns else config.DATASETS[dataset_name].get("column_match", "exact")
+    print(f"scoring with column_match={column_match}\n")
+
     conn = dbio.connect(config.DATASETS[dataset_name]["dsn"])
     rows: list[dict] = []
 
@@ -82,6 +91,19 @@ def main() -> int:
         gid = str(r["id"])
         gold = golden.get(gid)
         log = r.get("log") or {}
+
+        # SQL to score: prefer the /chat response's `sql`; fall back to the last execute_sql
+        # recovered from the log slice (the response carries no sql when python_agent or the
+        # visualizer produced the final turn). Re-parse the saved slice if the run predates
+        # last_executed_sql being captured at run time.
+        response_sql = (r.get("agent_sql") or "").strip()
+        log_sql = (log.get("last_executed_sql") or "").strip()
+        if not log_sql:
+            slice_path = run_dir / "logs" / f"q{r['id']}.log"
+            if slice_path.exists():
+                log_sql = (logparse.parse(slice_path.read_text()).last_executed_sql or "").strip()
+        scored_sql = response_sql or log_sql
+        sql_source = "response" if response_sql else ("log" if log_sql else None)
         base = {
             "id": r["id"],
             "question": r["question"],
@@ -92,7 +114,8 @@ def main() -> int:
             "redundant_sql_agent_calls": log.get("redundant_sql_agent_calls", 0),
             "other_delegations": log.get("other_delegations", {}),
             "agent_reported_rows": r.get("agent_row_count"),
-            "agent_sql": (r.get("agent_sql") or "").strip(),
+            "agent_sql": scored_sql,
+            "sql_source": sql_source,
         }
 
         if r.get("error") or r.get("http_status") not in (200, None):
@@ -103,14 +126,14 @@ def main() -> int:
             rows.append({**base, "verdict": "no_gold", "reason": "no golden entry for this id",
                          "gold_rows": None, "agent_reexec_rows": None, "column_perm": None})
             continue
-        if not base["agent_sql"]:
+        if not scored_sql:
             rows.append({**base, "verdict": "no_sql",
                          "reason": f"agent produced no SQL (routed_to={base['routed_to']})",
                          "gold_rows": gold["row_count"], "agent_reexec_rows": None, "column_perm": None})
             continue
 
         try:
-            got_cols, got_rows = dbio.run_sql(conn, base["agent_sql"], timeout_ms=config.SQL_TIMEOUT_MS)
+            got_cols, got_rows = dbio.run_sql(conn, scored_sql, timeout_ms=config.SQL_TIMEOUT_MS)
         except Exception as exc:
             rows.append({**base, "verdict": "agent_sql_error",
                          "reason": str(exc).strip().splitlines()[0],
@@ -122,11 +145,12 @@ def main() -> int:
             (got_cols, got_rows),
             ordered=gold["ordered"],
             float_tol=gold["float_tol"],
+            column_match=column_match,
         )
         rows.append({
             **base,
             "verdict": "exec_match" if cmp.equal else "exec_mismatch",
-            "reason": cmp.reason,
+            "reason": ("[sql recovered from log] " if sql_source == "log" else "") + cmp.reason,
             "gold_rows": cmp.gold_row_count,
             "agent_reexec_rows": cmp.got_row_count,
             "column_perm": cmp.column_perm,

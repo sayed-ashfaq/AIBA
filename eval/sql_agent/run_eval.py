@@ -92,10 +92,10 @@ def ensure_connection(session: requests.Session, spec: dict) -> None:
 
 
 def set_schema_mode(session: requests.Session, mode: str) -> None:
-    r = _api(session, "PATCH", "/me/schema-mode", json={"schema_mode": mode})
+    r = _api(session, "PATCH", "/auth/me/schema-mode", json={"schema_mode": mode})
     if r.status_code != 200:
         raise SystemExit(f"could not set schema_mode={mode}: {r.status_code} {r.text}")
-    confirmed = _api(session, "GET", "/me").json().get("schema_mode")
+    confirmed = _api(session, "GET", "/auth/me").json().get("schema_mode")
     if confirmed != mode:
         raise SystemExit(f"schema_mode did not stick: asked {mode}, got {confirmed}")
 

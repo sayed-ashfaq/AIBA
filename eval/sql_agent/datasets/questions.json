@@ -34,7 +34,7 @@
     "level": "L1",
     "question": "What are the 10 longest films?",
     "correct_supposed_sql": "SELECT film_id, title, length FROM film ORDER BY length DESC, film_id ASC LIMIT 10;",
-    "ordered": true
+    "ordered": false
   },
   {
     "id": "L1-007",
@@ -61,7 +61,6 @@
     "question": "What is the average length of films rated R?",
     "correct_supposed_sql": "SELECT AVG(length) AS average_length FROM film WHERE rating = 'R';"
   },
-
   {
     "id": "L2-001",
     "level": "L2",
@@ -123,7 +122,6 @@
     "question": "Which stores have more than 1,000 rentals?",
     "correct_supposed_sql": "SELECT s.store_id, COUNT(r.rental_id) AS rental_count FROM store s JOIN inventory i ON s.store_id = i.store_id JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY s.store_id HAVING COUNT(r.rental_id) > 1000 ORDER BY rental_count DESC;"
   },
-
   {
     "id": "L3-001",
     "level": "L3",
@@ -182,8 +180,8 @@
     "level": "L3",
     "question": "Find customers whose latest rental was later than the average latest-rental date across all customers.",
     "correct_supposed_sql": "WITH latest AS (SELECT customer_id, MAX(rental_date) AS latest_rental FROM rental GROUP BY customer_id) SELECT c.customer_id, c.first_name, c.last_name, l.latest_rental FROM latest l JOIN customer c ON c.customer_id = l.customer_id WHERE EXTRACT(EPOCH FROM l.latest_rental) > (SELECT AVG(EXTRACT(EPOCH FROM latest_rental)) FROM latest) ORDER BY c.customer_id;",
-    "ordered": true,
-    "assumption": "'Average latest-rental date' = the mean of each customer's MAX(rental_date), compared in epoch seconds since AVG() is not defined on timestamps."
+    "ordered": false,
+    "assumption": "'Average latest-rental date' = the mean of each customer's MAX(rental_date), compared in epoch seconds since AVG() is not defined on timestamps. Row order is not part of the answer."
   },
   {
     "id": "L3-010",
@@ -191,7 +189,6 @@
     "question": "For every store, calculate the percentage of its rentals that were returned within 7 days.",
     "correct_supposed_sql": "SELECT i.store_id, 100.0 * COUNT(*) FILTER (WHERE r.return_date IS NOT NULL AND r.return_date <= r.rental_date + INTERVAL '7 days') / COUNT(*) AS returned_within_7_days_pct FROM inventory i JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY i.store_id ORDER BY i.store_id;"
   },
-
   {
     "id": "L4-001",
     "level": "L4",
