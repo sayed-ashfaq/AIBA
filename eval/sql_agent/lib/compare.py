@@ -183,7 +183,19 @@ def _compare_rows(gold_rows, got_rows, *, ordered: bool, tol: float) -> Comparis
     return Comparison(True, "match (unordered)")
 
 
-_MAX_SUBSET_BIG_COLS = 12  # cap the ordered-selection search below this
+_MAX_SUBSET_BIG_COLS = 10  # skip the search past this many columns in the wider result
+_MAX_SUBSET_TRIES = 20000  # ... or past this many ordered selections
+
+
+def _col_signature(rows: list, idx: int, tol: float) -> tuple:
+    """A hashable summary of one column's values, so obviously non-matching columns can be
+    filtered before the expensive full-projection compare."""
+    vals = []
+    for r in rows[:50]:
+        c = normalize_cell(r[idx])
+        n = _as_number(c)
+        vals.append(round(n, 6) if n is not None else (None if c is None else str(c)))
+    return tuple(vals)
 
 
 def _subset_match(
@@ -191,10 +203,24 @@ def _subset_match(
 ) -> tuple[int, ...] | None:
     """Is there an ordered selection of ``n_small`` columns from the ``n_big``-wide result
     whose projection equals ``small_rows``? Returns the selection (indices into the wide
-    result) or None. Used to allow the agent to carry extra columns, or to project fewer.
+    result) or None. Lets the agent carry extra columns, or project fewer.
     """
-    if n_big > _MAX_SUBSET_BIG_COLS:
-        return None
+    if n_big > _MAX_SUBSET_BIG_COLS or math.perm(n_big, n_small) > _MAX_SUBSET_TRIES:
+        # fall back to matching each narrow column to the one big column with the same
+        # (unordered) value signature - cheap, and enough for the common alias/extra-col case
+        big_sigs = {i: sorted(map(repr, _col_signature(big_rows, i, tol))) for i in range(n_big)}
+        used, sel = set(), []
+        for j in range(n_small):
+            want = sorted(map(repr, _col_signature(small_rows, j, tol)))
+            hit = next((i for i in range(n_big) if i not in used and big_sigs[i] == want), None)
+            if hit is None:
+                return None
+            used.add(hit)
+            sel.append(hit)
+        cand = tuple(sel)
+        projected = [tuple(r[i] for i in cand) for r in big_rows]
+        return cand if _compare_rows(small_rows, projected, ordered=ordered, tol=tol).equal else None
+
     for sel in permutations(range(n_big), n_small):
         projected = [tuple(r[i] for i in sel) for r in big_rows]
         if _compare_rows(small_rows, projected, ordered=ordered, tol=tol).equal:

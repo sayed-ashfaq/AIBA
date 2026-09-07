@@ -71,10 +71,32 @@ $PY report.py --runs runs/dvdrental__plain__<stamp> runs/dvdrental__graph__<stam
 
 `run_eval.py` creates a dedicated eval account (`sql-eval@aiba.dev` by default) and a
 connection named `dvdrental (eval)`, so it never touches your own login or active
-connection. It sets `schema_mode` over the API (`PATCH /me/schema-mode`) before each run.
+connection. It sets `schema_mode` over the API (`PATCH /auth/me/schema-mode`) before each run.
 
 Re-scoring is free. If you change a gold query or `lib/compare.py`, re-run **step 3 only**
 — you do not need to re-run the agent.
+
+---
+
+## The metrics ledger
+
+`score.py` appends one row of aggregate numbers to **`metrics.csv`** (git-tracked) on every
+run — no questions, no SQL, just what you compare over time: exec accuracy overall and per
+tier, valid-SQL rate, verdict counts, latency mean/p50/p95/max, `sql_agent` delegation and
+redundant-call totals, final-turn routing, and (once you fill `review.csv`) a failure-tag
+histogram. Columns are documented in `lib/ledger.py`.
+
+```bash
+$PY ledger.py                       # whole ledger as a table
+$PY ledger.py --dataset dvdrental   # filtered, with a Δ line vs the previous run
+$PY ledger.py --last 8
+$PY ledger.py --record runs/<dir>   # (re)build a row without re-scoring — e.g. after
+                                    # tagging review.csv, or to backfill an old run
+```
+
+A re-score replaces that run's row (keyed on `run_id` + `column_match`), it doesn't
+duplicate it. Adding a column to `COLUMNS` in `lib/ledger.py` migrates the file on the
+next write (old rows get a blank for it). `--no-ledger` on `score.py` skips the append.
 
 ---
 

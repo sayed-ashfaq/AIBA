@@ -23,7 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import config  # noqa: E402
-from lib import compare, dbio, logparse  # noqa: E402
+from lib import compare, dbio, ledger, logparse  # noqa: E402
 
 # Verdicts, worst-to-best. exec_mismatch and agent_sql_error are the ones to eyeball.
 VERDICTS = [
@@ -67,6 +67,7 @@ def main() -> int:
         help="require the agent's columns to match the reference exactly "
         "(overrides the dataset's column_match setting)",
     )
+    ap.add_argument("--no-ledger", action="store_true", help="do not append a row to metrics.csv")
     args = ap.parse_args()
 
     run_dir = Path(args.run)
@@ -178,6 +179,7 @@ def main() -> int:
 
     summary = {
         "n": n,
+        "column_match": column_match,
         "by_verdict": by_verdict,
         "exec_accuracy": round(exec_match / n, 3) if n else None,
         "valid_sql_rate": round((n - invalid) / n, 3) if n else None,
@@ -235,6 +237,11 @@ def main() -> int:
               f"{str(r['elapsed_s']):>6}s  sqlx{r['sql_agent_invocations']}{flag}")
 
     print(f"\nwrote {run_dir / 'scored.json'} and {run_dir / 'review.csv'}")
+
+    if not args.no_ledger:
+        pos = ledger.upsert(config.HERE / "metrics.csv", ledger.build_row(run_dir, config.GOLDEN_DIR))
+        print(f"recorded -> {config.HERE / 'metrics.csv'} (row {pos})")
+
     print(f"tag the mismatches in review.csv (vocabulary: {', '.join(FAILURE_TAGS)})")
     print(f"then:  python report.py --runs {run_dir.relative_to(config.HERE)}")
     return 0
