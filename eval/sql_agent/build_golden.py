@@ -43,7 +43,9 @@ def _heuristics(item, columns, rows, error) -> list[tuple[str, str]]:
     flags: list[tuple[str, str]] = []
 
     if n == 0:
-        flags.append(("WARN", "0 rows returned - confirm that is expected, else the SQL is wrong"))
+        # a documented empty result (notes/assumption explains it) is a known quantity, not a smell
+        lvl = "INFO" if item.notes else "WARN"
+        flags.append((lvl, "0 rows returned - confirm that is expected, else the SQL is wrong"))
     if n == 1 and len(columns) == 1:
         flags.append(("INFO", f"scalar result = {rows[0][0]!r}"))
     if n > 1000:
@@ -73,13 +75,13 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = config.DATASETS[args.dataset]
-    items = dataset.load(cfg["yaml"])
+    items = dataset.load(cfg["path"], cfg.get("ordered_default", "auto"))
     if args.ids:
-        wanted = {int(x) for x in args.ids.split(",")}
-        items = [it for it in items if it.id in wanted]
+        wanted = {x.strip() for x in args.ids.split(",")}
+        items = [it for it in items if str(it.id) in wanted]
 
     if not items:
-        print(f"No questions in {cfg['yaml']}.")
+        print(f"No questions in {cfg['path']}.")
         print("Add some (see the README, 'Building the ground truth'), then re-run.")
         return 0
 

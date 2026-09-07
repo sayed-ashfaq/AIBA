@@ -1,0 +1,266 @@
+[
+  {
+    "id": "L1-001",
+    "level": "L1",
+    "question": "How many films are in the catalog?",
+    "correct_supposed_sql": "SELECT COUNT(*) AS film_count FROM film;"
+  },
+  {
+    "id": "L1-002",
+    "level": "L1",
+    "question": "What is the average rental rate of all films?",
+    "correct_supposed_sql": "SELECT AVG(rental_rate) AS average_rental_rate FROM film;"
+  },
+  {
+    "id": "L1-003",
+    "level": "L1",
+    "question": "How many customers are currently active?",
+    "correct_supposed_sql": "SELECT COUNT(*) AS active_customers FROM customer WHERE active = 1;"
+  },
+  {
+    "id": "L1-004",
+    "level": "L1",
+    "question": "How many films are rated PG-13?",
+    "correct_supposed_sql": "SELECT COUNT(*) AS film_count FROM film WHERE rating = 'PG-13';"
+  },
+  {
+    "id": "L1-005",
+    "level": "L1",
+    "question": "What is the total replacement cost of all films?",
+    "correct_supposed_sql": "SELECT SUM(replacement_cost) AS total_replacement_cost FROM film;"
+  },
+  {
+    "id": "L1-006",
+    "level": "L1",
+    "question": "What are the 10 longest films?",
+    "correct_supposed_sql": "SELECT film_id, title, length FROM film ORDER BY length DESC, film_id ASC LIMIT 10;",
+    "ordered": true
+  },
+  {
+    "id": "L1-007",
+    "level": "L1",
+    "question": "How many films have the highest rental rate?",
+    "correct_supposed_sql": "SELECT COUNT(*) AS film_count FROM film WHERE rental_rate = (SELECT MAX(rental_rate) FROM film);",
+    "ordered": false
+  },
+  {
+    "id": "L1-008",
+    "level": "L1",
+    "question": "How many actors have the last name Smith?",
+    "correct_supposed_sql": "SELECT COUNT(*) AS actor_count FROM actor WHERE last_name = 'Smith';"
+  },
+  {
+    "id": "L1-009",
+    "level": "L1",
+    "question": "How many customers were created after January 1, 2006?",
+    "correct_supposed_sql": "SELECT COUNT(*) AS customer_count FROM customer WHERE create_date > DATE '2006-01-01';"
+  },
+  {
+    "id": "L1-010",
+    "level": "L1",
+    "question": "What is the average length of films rated R?",
+    "correct_supposed_sql": "SELECT AVG(length) AS average_length FROM film WHERE rating = 'R';"
+  },
+
+  {
+    "id": "L2-001",
+    "level": "L2",
+    "question": "How many rentals does each customer have?",
+    "correct_supposed_sql": "SELECT c.customer_id, c.first_name, c.last_name, COUNT(r.rental_id) AS rental_count FROM customer c LEFT JOIN rental r ON c.customer_id = r.customer_id GROUP BY c.customer_id, c.first_name, c.last_name ORDER BY rental_count DESC;"
+  },
+  {
+    "id": "L2-002",
+    "level": "L2",
+    "question": "Which customers have spent more than $150?",
+    "correct_supposed_sql": "SELECT c.customer_id, c.first_name, c.last_name, SUM(p.amount) AS total_spent FROM customer c JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id, c.first_name, c.last_name HAVING SUM(p.amount) > 150 ORDER BY total_spent DESC;"
+  },
+  {
+    "id": "L2-003",
+    "level": "L2",
+    "question": "What are the 10 most rented films?",
+    "correct_supposed_sql": "SELECT f.film_id, f.title, COUNT(r.rental_id) AS rental_count FROM film f JOIN inventory i ON f.film_id = i.film_id JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY f.film_id, f.title ORDER BY rental_count DESC, f.film_id ASC LIMIT 10;",
+    "ordered": true
+  },
+  {
+    "id": "L2-004",
+    "level": "L2",
+    "question": "How much revenue did each store generate?",
+    "correct_supposed_sql": "SELECT s.store_id, SUM(p.amount) AS revenue FROM store s JOIN inventory i ON s.store_id = i.store_id JOIN rental r ON i.inventory_id = r.inventory_id JOIN payment p ON r.rental_id = p.rental_id GROUP BY s.store_id ORDER BY revenue DESC;"
+  },
+  {
+    "id": "L2-005",
+    "level": "L2",
+    "question": "Which film categories generate the most rental revenue?",
+    "correct_supposed_sql": "SELECT c.category_id, c.name, SUM(p.amount) AS revenue FROM category c JOIN film_category fc ON c.category_id = fc.category_id JOIN inventory i ON fc.film_id = i.film_id JOIN rental r ON i.inventory_id = r.inventory_id JOIN payment p ON r.rental_id = p.rental_id GROUP BY c.category_id, c.name ORDER BY revenue DESC;"
+  },
+  {
+    "id": "L2-006",
+    "level": "L2",
+    "question": "Which staff members processed the most rentals?",
+    "correct_supposed_sql": "SELECT s.staff_id, s.first_name, s.last_name, COUNT(r.rental_id) AS rental_count FROM staff s JOIN rental r ON s.staff_id = r.staff_id GROUP BY s.staff_id, s.first_name, s.last_name ORDER BY rental_count DESC;"
+  },
+  {
+    "id": "L2-007",
+    "level": "L2",
+    "question": "Which countries have more than 10 customers?",
+    "correct_supposed_sql": "SELECT co.country, COUNT(cu.customer_id) AS customer_count FROM country co JOIN city ci ON co.country_id = ci.country_id JOIN address a ON ci.city_id = a.city_id JOIN customer cu ON a.address_id = cu.address_id GROUP BY co.country_id, co.country HAVING COUNT(cu.customer_id) > 10 ORDER BY customer_count DESC;"
+  },
+  {
+    "id": "L2-008",
+    "level": "L2",
+    "question": "Which actors have appeared in more than 20 films?",
+    "correct_supposed_sql": "SELECT a.actor_id, a.first_name, a.last_name, COUNT(fa.film_id) AS film_count FROM actor a JOIN film_actor fa ON a.actor_id = fa.actor_id GROUP BY a.actor_id, a.first_name, a.last_name HAVING COUNT(fa.film_id) > 20 ORDER BY film_count DESC;"
+  },
+  {
+    "id": "L2-009",
+    "level": "L2",
+    "question": "Which film ratings have an average rental rate above $3?",
+    "correct_supposed_sql": "SELECT rating, AVG(rental_rate) AS average_rental_rate FROM film GROUP BY rating HAVING AVG(rental_rate) > 3 ORDER BY average_rental_rate DESC;"
+  },
+  {
+    "id": "L2-010",
+    "level": "L2",
+    "question": "Which stores have more than 1,000 rentals?",
+    "correct_supposed_sql": "SELECT s.store_id, COUNT(r.rental_id) AS rental_count FROM store s JOIN inventory i ON s.store_id = i.store_id JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY s.store_id HAVING COUNT(r.rental_id) > 1000 ORDER BY rental_count DESC;"
+  },
+
+  {
+    "id": "L3-001",
+    "level": "L3",
+    "question": "How much revenue was generated in each month of 2007?",
+    "correct_supposed_sql": "SELECT DATE_TRUNC('month', payment_date) AS month, SUM(amount) AS revenue FROM payment WHERE payment_date >= TIMESTAMP '2007-01-01' AND payment_date < TIMESTAMP '2008-01-01' GROUP BY DATE_TRUNC('month', payment_date) ORDER BY month;"
+  },
+  {
+    "id": "L3-002",
+    "level": "L3",
+    "question": "Which customers have never rented a movie?",
+    "correct_supposed_sql": "SELECT c.customer_id, c.first_name, c.last_name FROM customer c LEFT JOIN rental r ON c.customer_id = r.customer_id WHERE r.rental_id IS NULL ORDER BY c.customer_id;",
+    "ordered": true,
+    "assumption": "The stock dvdrental dataset is expected to return an empty result because every customer has at least one rental."
+  },
+  {
+    "id": "L3-003",
+    "level": "L3",
+    "question": "Which films have never been rented?",
+    "correct_supposed_sql": "SELECT f.film_id, f.title FROM film f WHERE NOT EXISTS (SELECT 1 FROM inventory i JOIN rental r ON i.inventory_id = r.inventory_id WHERE i.film_id = f.film_id);"
+  },
+  {
+    "id": "L3-004",
+    "level": "L3",
+    "question": "For each customer, find their most recent rental.",
+    "correct_supposed_sql": "SELECT customer_id, rental_id, rental_date FROM (SELECT r.*, ROW_NUMBER() OVER (PARTITION BY customer_id ORDER BY rental_date DESC) AS rn FROM rental r) x WHERE rn = 1;"
+  },
+  {
+    "id": "L3-005",
+    "level": "L3",
+    "question": "What is the average number of days customers keep rented movies before returning them?",
+    "correct_supposed_sql": "SELECT AVG(EXTRACT(EPOCH FROM (return_date - rental_date)) / 86400.0) AS average_rental_days FROM rental WHERE return_date IS NOT NULL;"
+  },
+  {
+    "id": "L3-006",
+    "level": "L3",
+    "question": "For each customer, rank them by total amount spent, from highest to lowest.",
+    "correct_supposed_sql": "WITH customer_spend AS (SELECT c.customer_id, c.first_name, c.last_name, COALESCE(SUM(p.amount), 0) AS total_spent FROM customer c LEFT JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id, c.first_name, c.last_name) SELECT customer_id, first_name, last_name, total_spent, RANK() OVER (ORDER BY total_spent DESC) AS spend_rank FROM customer_spend ORDER BY spend_rank, customer_id;",
+    "ordered": true
+  },
+  {
+    "id": "L3-007",
+    "level": "L3",
+    "question": "Which customers spent more than the average customer spend?",
+    "correct_supposed_sql": "WITH customer_spend AS (SELECT c.customer_id, c.first_name, c.last_name, COALESCE(SUM(p.amount), 0) AS total_spent FROM customer c LEFT JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id, c.first_name, c.last_name) SELECT customer_id, first_name, last_name, total_spent FROM customer_spend WHERE total_spent > (SELECT AVG(total_spent) FROM customer_spend) ORDER BY total_spent DESC, customer_id ASC;",
+    "ordered": true
+  },
+  {
+    "id": "L3-008",
+    "level": "L3",
+    "question": "What are the three most rented films in each category?",
+    "correct_supposed_sql": "WITH film_rentals AS (SELECT c.category_id, c.name AS category, f.film_id, f.title, COUNT(r.rental_id) AS rental_count FROM category c JOIN film_category fc ON c.category_id = fc.category_id JOIN film f ON fc.film_id = f.film_id JOIN inventory i ON f.film_id = i.film_id JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY c.category_id, c.name, f.film_id, f.title), ranked AS (SELECT category_id, category, film_id, title, rental_count, ROW_NUMBER() OVER (PARTITION BY category_id ORDER BY rental_count DESC, film_id ASC) AS rn FROM film_rentals) SELECT category, film_id, title, rental_count FROM ranked WHERE rn <= 3 ORDER BY category, rental_count DESC, film_id ASC;",
+    "ordered": true
+  },
+  {
+    "id": "L3-009",
+    "level": "L3",
+    "question": "Find customers whose latest rental was later than the average latest-rental date across all customers.",
+    "correct_supposed_sql": "WITH latest AS (SELECT customer_id, MAX(rental_date) AS latest_rental FROM rental GROUP BY customer_id) SELECT c.customer_id, c.first_name, c.last_name, l.latest_rental FROM latest l JOIN customer c ON c.customer_id = l.customer_id WHERE EXTRACT(EPOCH FROM l.latest_rental) > (SELECT AVG(EXTRACT(EPOCH FROM latest_rental)) FROM latest) ORDER BY c.customer_id;",
+    "ordered": true,
+    "assumption": "'Average latest-rental date' = the mean of each customer's MAX(rental_date), compared in epoch seconds since AVG() is not defined on timestamps."
+  },
+  {
+    "id": "L3-010",
+    "level": "L3",
+    "question": "For every store, calculate the percentage of its rentals that were returned within 7 days.",
+    "correct_supposed_sql": "SELECT i.store_id, 100.0 * COUNT(*) FILTER (WHERE r.return_date IS NOT NULL AND r.return_date <= r.rental_date + INTERVAL '7 days') / COUNT(*) AS returned_within_7_days_pct FROM inventory i JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY i.store_id ORDER BY i.store_id;"
+  },
+
+  {
+    "id": "L4-001",
+    "level": "L4",
+    "question": "Which customers are our most valuable customers?",
+    "correct_supposed_sql": "SELECT c.customer_id, c.first_name, c.last_name, SUM(p.amount) AS total_spent FROM customer c JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id, c.first_name, c.last_name ORDER BY total_spent DESC, c.customer_id ASC LIMIT 10;",
+    "ordered": true,
+    "assumption": "Interpret 'valuable' as highest historical customer spend and return the top 10 customers."
+  },
+  {
+    "id": "L4-002",
+    "level": "L4",
+    "question": "Which movies are underperforming?",
+    "correct_supposed_sql": "SELECT f.film_id, f.title, COUNT(r.rental_id) AS rental_count, COALESCE(SUM(p.amount), 0) AS revenue FROM film f LEFT JOIN inventory i ON f.film_id = i.film_id LEFT JOIN rental r ON i.inventory_id = r.inventory_id LEFT JOIN payment p ON r.rental_id = p.rental_id GROUP BY f.film_id, f.title HAVING COUNT(r.rental_id) < (SELECT AVG(rental_count) FROM (SELECT f2.film_id, COUNT(r2.rental_id) AS rental_count FROM film f2 LEFT JOIN inventory i2 ON f2.film_id = i2.film_id LEFT JOIN rental r2 ON i2.inventory_id = r2.inventory_id GROUP BY f2.film_id) x) ORDER BY rental_count;",
+    "assumption": "Interpret 'underperforming' as films with below-average rental volume."
+  },
+  {
+    "id": "L4-003",
+    "level": "L4",
+    "question": "Where are we strongest geographically?",
+    "correct_supposed_sql": "SELECT co.country, COUNT(r.rental_id) AS rentals, SUM(p.amount) AS revenue FROM country co JOIN city ci ON co.country_id = ci.country_id JOIN address a ON ci.city_id = a.city_id JOIN customer c ON a.address_id = c.address_id JOIN rental r ON c.customer_id = r.customer_id JOIN payment p ON r.rental_id = p.rental_id GROUP BY co.country_id, co.country ORDER BY revenue DESC;",
+    "assumption": "Interpret geographic strength as highest total rental revenue by customer country."
+  },
+  {
+    "id": "L4-004",
+    "level": "L4",
+    "question": "Which film categories should management focus on?",
+    "correct_supposed_sql": "SELECT c.name, COUNT(DISTINCT r.rental_id) AS rentals, SUM(p.amount) AS revenue, AVG(f.rental_rate) AS avg_rental_rate FROM category c JOIN film_category fc ON c.category_id = fc.category_id JOIN film f ON fc.film_id = f.film_id JOIN inventory i ON f.film_id = i.film_id JOIN rental r ON i.inventory_id = r.inventory_id JOIN payment p ON r.rental_id = p.rental_id GROUP BY c.category_id, c.name ORDER BY revenue DESC;",
+    "assumption": "Interpret 'focus on' as prioritizing categories with the highest revenue."
+  },
+  {
+    "id": "L4-005",
+    "level": "L4",
+    "question": "Which customers are at risk of becoming inactive?",
+    "correct_supposed_sql": "SELECT c.customer_id, c.first_name, c.last_name, MAX(r.rental_date) AS last_rental FROM customer c LEFT JOIN rental r ON c.customer_id = r.customer_id GROUP BY c.customer_id, c.first_name, c.last_name HAVING MAX(r.rental_date) < (SELECT MAX(rental_date) - INTERVAL '30 days' FROM rental) OR MAX(r.rental_date) IS NULL ORDER BY last_rental;",
+    "assumption": "Interpret 'at risk' as customers whose last rental is more than 30 days before the latest rental activity in the database, or customers who have never rented."
+  },
+  {
+    "id": "L4-006",
+    "level": "L4",
+    "question": "Which stores are performing best?",
+    "correct_supposed_sql": "SELECT s.store_id, COUNT(DISTINCT r.rental_id) AS rentals, COALESCE(SUM(p.amount), 0) AS revenue FROM store s LEFT JOIN inventory i ON s.store_id = i.store_id LEFT JOIN rental r ON i.inventory_id = r.inventory_id LEFT JOIN payment p ON r.rental_id = p.rental_id GROUP BY s.store_id ORDER BY revenue DESC;",
+    "assumption": "Interpret 'performing best' as highest total rental revenue."
+  },
+  {
+    "id": "L4-007",
+    "level": "L4",
+    "question": "Which customers should we target for a loyalty program?",
+    "correct_supposed_sql": "SELECT c.customer_id, c.first_name, c.last_name, COUNT(DISTINCT r.rental_id) AS rentals, COALESCE(SUM(p.amount), 0) AS total_spent FROM customer c JOIN rental r ON c.customer_id = r.customer_id JOIN payment p ON p.rental_id = r.rental_id GROUP BY c.customer_id, c.first_name, c.last_name HAVING COUNT(DISTINCT r.rental_id) >= 10 AND SUM(p.amount) >= 50 ORDER BY total_spent DESC, c.customer_id ASC;",
+    "assumption": "Interpret loyalty candidates as customers with at least 10 rentals and at least $50 in spend."
+  },
+  {
+    "id": "L4-008",
+    "level": "L4",
+    "question": "Which movies are good candidates for removing from the catalog?",
+    "correct_supposed_sql": "SELECT f.film_id, f.title, COUNT(r.rental_id) AS rental_count, SUM(f.replacement_cost) AS replacement_cost FROM film f LEFT JOIN inventory i ON f.film_id = i.film_id LEFT JOIN rental r ON i.inventory_id = r.inventory_id GROUP BY f.film_id, f.title HAVING COUNT(r.rental_id) <= 2 ORDER BY rental_count ASC, f.title;",
+    "assumption": "Interpret removal candidates as films with two or fewer historical rentals."
+  },
+  {
+    "id": "L4-009",
+    "level": "L4",
+    "question": "Are expensive movies actually generating more revenue?",
+    "correct_supposed_sql": "SELECT f.film_id, f.title, f.rental_rate, COUNT(r.rental_id) AS rentals, COALESCE(SUM(p.amount), 0) AS revenue FROM film f LEFT JOIN inventory i ON f.film_id = i.film_id LEFT JOIN rental r ON i.inventory_id = r.inventory_id LEFT JOIN payment p ON r.rental_id = p.rental_id GROUP BY f.film_id, f.title, f.rental_rate ORDER BY f.rental_rate DESC;",
+    "assumption": "Interpret 'expensive' as higher rental_rate and compare rental price against rental volume and revenue."
+  },
+  {
+    "id": "L4-010",
+    "level": "L4",
+    "question": "Which customer segments deserve the most attention from management?",
+    "correct_supposed_sql": "WITH customer_metrics AS (SELECT c.customer_id, c.first_name, c.last_name, COUNT(DISTINCT r.rental_id) AS rentals, COALESCE(SUM(p.amount), 0) AS spend FROM customer c LEFT JOIN rental r ON c.customer_id = r.customer_id LEFT JOIN payment p ON c.customer_id = p.customer_id GROUP BY c.customer_id, c.first_name, c.last_name) SELECT CASE WHEN spend >= 100 AND rentals >= 20 THEN 'High Value' WHEN spend >= 50 OR rentals >= 10 THEN 'Medium Value' ELSE 'Low Value' END AS segment, COUNT(*) AS customers, AVG(spend) AS avg_spend, AVG(rentals) AS avg_rentals FROM customer_metrics GROUP BY segment ORDER BY avg_spend DESC;",
+    "assumption": "Define customer segments using historical spend and rental frequency."
+  }
+]

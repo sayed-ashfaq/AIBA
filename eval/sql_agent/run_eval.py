@@ -201,12 +201,12 @@ def main() -> int:
     args = ap.parse_args()
 
     cfg = config.DATASETS[args.dataset]
-    items = dataset.load(cfg["yaml"])
+    items = dataset.load(cfg["path"], cfg.get("ordered_default", "auto"))
     if args.ids:
-        wanted = {int(x) for x in args.ids.split(",")}
-        items = [it for it in items if it.id in wanted]
+        wanted = {x.strip() for x in args.ids.split(",")}
+        items = [it for it in items if str(it.id) in wanted]
     if not items:
-        raise SystemExit(f"no questions to run in {cfg['yaml']}")
+        raise SystemExit(f"no questions to run in {cfg['path']}")
 
     golden = config.GOLDEN_DIR / f"{args.dataset}.results.json"
     if not golden.exists():

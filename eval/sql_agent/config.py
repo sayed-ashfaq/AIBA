@@ -43,7 +43,12 @@ BACKEND_LOG = Path(
 
 DATASETS = {
     "dvdrental": {
-        "yaml": DATASETS_DIR / "dvdrental.yaml",
+        # the hand-written question file: JSON list or YAML with an `items:` list
+        "path": DATASETS_DIR / "questions.json",
+        # what an item without an explicit `ordered` field means. "auto" = infer from a
+        # top-level ORDER BY. False here because the question set sorts every gold query
+        # just for display; set `ordered: true` on the items where the ranking IS the answer.
+        "ordered_default": False,
         "aiba_connection": {
             "name": "dvdrental (eval)",
             "db_type": "postgres",
