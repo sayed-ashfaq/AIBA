@@ -1,0 +1,5 @@
+# raw captures and generated reports - big, machine-specific, regenerable.
+# Keep: datasets/*.yaml (hand-written) and golden/*.results.json (the verified answers).
+runs/
+__pycache__/
+*.pyc

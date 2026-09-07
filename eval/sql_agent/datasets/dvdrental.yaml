@@ -1,0 +1,33 @@
+# Golden question set for the SQL agent, against the local `dvdrental` database.
+#
+# You write and verify every item here by hand. See eval/sql_agent/README.md,
+# section "Building the ground truth dataset", for where to source questions and
+# how to confirm a reference query is actually gold (not quietly wrong).
+#
+# Workflow once you have added questions:
+#   1. python build_golden.py --dataset dvdrental       # runs + verifies every gold_sql
+#   2. fix anything it flags (empty result, LIMIT without total-order ORDER BY, SELECT *, ...)
+#   3. commit golden/dvdrental.results.json alongside this file
+#
+# ---------------------------------------------------------------------------------------------
+# Fields per item:
+#
+#   id            (required) unique integer. Never reuse one - a retired question keeps its id.
+#   question      (required) the natural-language question, exactly as a user would type it.
+#   gold_sql      (required) your verified reference query, Postgres dialect. No `SELECT *`.
+#   difficulty    (required) L1 | L2 | L3 | L4
+#                   L1  single table: filter / COUNT / SUM / ORDER BY ... LIMIT
+#                   L2  2-3 table joins, GROUP BY, HAVING
+#                   L3  date/time logic, subqueries, self-joins, window functions, ratios
+#                   L4  underspecified business question; needs domain judgement / multi-step
+#   tags          (optional) list[str], e.g. [join, aggregation, date-filter, top-n]
+#   ordered       (optional) "auto" (default) enforces row order only if gold_sql has a
+#                   top-level ORDER BY. Set true/false to override.
+#   float_tol     (optional) absolute numeric tolerance for comparison (default 1e-6)
+#   expects_chart (optional) true if the phrasing implies a visualisation
+#   notes         (optional) anything the scorer/you should know: a pinned interpretation
+#                   of an ambiguous phrase, a join that naively double-counts, why a
+#                   result is legitimately empty, etc.
+# ---------------------------------------------------------------------------------------------
+
+items: []
