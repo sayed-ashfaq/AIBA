@@ -133,10 +133,14 @@ def ask(session: requests.Session, question: str, timeout: int) -> dict:
         return {"error": f"{type(exc).__name__}: {exc}", "elapsed_s": round(time.monotonic() - t0, 2)}
     elapsed = round(time.monotonic() - t0, 2)
     slice_text = read_log_since(off)
+    if not slice_text.strip() and elapsed > 3:
+        print(f"    WARN: empty log slice for a {elapsed}s call - is config.BACKEND_LOG right? "
+              f"({config.BACKEND_LOG})")
 
     out: dict = {
         "http_status": resp.status_code,
         "elapsed_s": elapsed,
+        "log_offset": off,
         "log_slice": slice_text,
         "log": logparse.parse(slice_text).as_dict(),
     }

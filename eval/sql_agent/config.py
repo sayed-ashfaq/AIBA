@@ -28,9 +28,25 @@ EVAL_FULL_NAME = "SQL Eval"
 # The backend log file OperationLoggingMiddleware writes to (one line per tool call). The
 # harness reads the byte-range written during each question to count sql_agent delegations
 # and tool timings. Assumes the eval is the only traffic hitting the backend while it runs.
-BACKEND_LOG = Path(
-    os.environ.get("AIBA_BACKEND_LOG", str(REPO_ROOT / "backend" / "logs" / "aiba.log"))
-)
+#
+# The backend uses a RELATIVE "logs/" dir, so the file location depends on the cwd it was
+# started from. We check the known spots and take whichever exists and was written most
+# recently; override with AIBA_BACKEND_LOG if yours is elsewhere.
+def _find_backend_log() -> Path:
+    override = os.environ.get("AIBA_BACKEND_LOG")
+    if override:
+        return Path(override)
+    candidates = [
+        REPO_ROOT / "logs" / "aiba.log",
+        REPO_ROOT / "backend" / "logs" / "aiba.log",
+    ]
+    existing = [p for p in candidates if p.exists()]
+    if existing:
+        return max(existing, key=lambda p: p.stat().st_mtime)
+    return candidates[0]
+
+
+BACKEND_LOG = _find_backend_log()
 
 # --- datasets ----------------------------------------------------------------------------------
 #
