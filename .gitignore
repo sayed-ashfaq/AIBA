@@ -14,6 +14,10 @@ dist/
 # OS/editor
 .DS_Store
 
+# logs
+logs/
+*.log
+*.logs
 
 # Misc
 dev-notes/

@@ -67,9 +67,10 @@ async def unhandled_error_handler(request: Request, exc: Exception) -> JSONRespo
 
 
 def main():
-    # exclude logs/ — without this, log writes inside the watched directory register as file
-    # changes and get logged themselves, snowballing (see app/core/logging.py for the full story)
-    uvicorn.run("main:app", host="0.0.0.0", port=8010, reload=True, reload_excludes=["logs/*"])
+    # no reload_excludes needed for logs/ anymore — app.core.logging now writes them to the
+    # project root, outside this directory, so uvicorn's file-watcher (which watches the cwd,
+    # backend/) never sees those writes in the first place.
+    uvicorn.run("main:app", host="0.0.0.0", port=8010, reload=True)
 
 
 if __name__ == "__main__":

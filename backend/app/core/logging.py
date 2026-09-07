@@ -5,8 +5,13 @@ import time
 from contextlib import contextmanager
 from datetime import datetime
 from logging.handlers import TimedRotatingFileHandler
+from pathlib import Path
 
-LOG_DIR = "logs"
+# absolute, not "logs" — a relative path resolves against the process's cwd, which changes
+# depending on where the app is launched from. This file lives at backend/app/core/logging.py, so
+# three parents up is the project root: AIBA/logs, next to backend/ and frontend/, not buried
+# inside backend/ where a stray `rm -rf backend` would take it out too.
+LOG_DIR = str(Path(__file__).resolve().parents[3] / "logs")
 LOG_PREFIX = "aiba"
 LOG_FORMAT = "%(asctime)s - %(name)s - %(levelname)s - %(processName)s - %(message)s"
 DATE_FORMAT = "%Y-%m-%d %H:%M:%S"

@@ -13,11 +13,5 @@ wheels/
 .env
 
 
-# logs
-logs/
-*.log 
-*.logs
-
-
 # misc
 dev-notes/
