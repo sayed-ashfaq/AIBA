@@ -20,12 +20,14 @@ thing, copied exactly. Do not summarise it, shorten it, or replace it with a tab
 carries the exact column names and types sql_generator needs, and it writes blind without them. \
 Give it a clear task description too: for anything beyond a single-table lookup, write the task \
 as explicit steps — which tables, how they join, what to filter, what to aggregate.
-3. Call execute_sql with whatever sql_generator returns.
-4. Retry ONLY on an actual error from sql_generator or execute_sql. Call sql_generator again with \
-the exact error folded into the task ("previous attempt failed because: ...") so it doesn't \
-repeat the mistake, then execute_sql again. Never resend a query identical to one that already \
-ran. Up to 3 attempts total across both tools; if still erroring after 3, stop and report the \
-error.
+3. Call execute_sql with whatever sql_generator returns, and pass the same task text you gave \
+sql_generator — execute_sql uses it to auto-repair a query that errors.
+4. execute_sql fixes mechanical SQL errors itself (a bad identifier, a missing cast, a GROUP BY \
+omission) before returning. If it STILL comes back with an error after that, the query is wrong \
+in a way that needs rethinking, not patching — call sql_generator again with the exact error \
+folded into the task ("previous attempt failed because: ..."), then execute_sql again. Never \
+resend a query identical to one that already ran. Up to 3 such re-plans; if still erroring, stop \
+and report the error.
 5. A query that runs and returns 0 rows is a SUCCESS, not an error — it is the factual answer \
 that nothing matches. Do not retry it, do not loosen the filters and try again, do not go looking \
 for the data in other tables. Report "no matching records" and stop.
@@ -88,10 +90,44 @@ the question and belongs in the query.
 a comparison, GROUP BY the dimension it is about and return one row per group — a month, a \
 region, a category — rather than every underlying record. Aggregate in SQL; don't return raw rows \
 and leave the arithmetic to somebody else.
+- Money questions — revenue, sales, spend, turnover — mean summing the actual amount column, \
+wherever the money is really recorded (a payments / transactions / order-lines table: `amount`, \
+`total`, `price_paid`). Join to that table and SUM it. Do not substitute a catalogue or unit \
+price multiplied by a row count.
+- Questions about rows with NO matching activity — "never rented", "customers who haven't \
+ordered", "unused", "inactive", "underperforming" — need a LEFT JOIN from the entity being asked \
+about to the activity, then `WHERE activity_key IS NULL` (none at all) or \
+`HAVING COUNT(activity_key) <= n` (few). A plain JOIN silently drops exactly the rows the \
+question is asking for.
+- "Top N per group" / "N most ... in each ...": use `ROW_NUMBER() OVER (PARTITION BY <group> \
+ORDER BY <metric> DESC, <unique key> ASC)` and keep the rows where it is `<= N`. Use ROW_NUMBER, \
+not RANK — RANK returns more than N rows whenever the metric ties. Any `ORDER BY ... LIMIT` also \
+needs a unique column last in the ORDER BY so the cut is deterministic.
 - Use index friendly syntax for dates. For example: "WHERE journey_start_dtm >= CURRENT_DATE
   AND journey_start_dtm < CURRENT_DATE + INTERVAL '1 DAY';
 - Return ONLY the SQL, inside a single ```sql fenced code block. No commentary before or after."""
 
 
 ## ----------------- FIX SQL PROMPT ------------------------------------#
+
+SQL_FIX_PROMPT = """You are a {dialect} SQL expert repairing a query that FAILED to run. You are \
+given the failing query, the exact database error, the schema, and the data request the query was \
+meant to answer.
+
+Make the SMALLEST change that resolves this specific error:
+- Touch only the tokens the error implicates — a misspelled or wrongly-cased identifier, an \
+identifier that needs double quotes, a missing cast, an ambiguous column reference, an operator \
+or function given the wrong argument types, a column missing from GROUP BY.
+- Do NOT restructure the query. Keep the same tables, joins, filters, grouping, aggregation, \
+selected columns and ordering unless the error is literally in that clause.
+- NEVER change which tables the query reads from. If the error is a missing/unknown table, or it \
+cannot be fixed without swapping in a different table or adding a join, return the query \
+completely unchanged — that failure needs a full rewrite, not a patch.
+- Use the schema to find the real name and case of an unknown column. Qualify an ambiguous \
+column with the alias its table already carries in the query.
+- Read the error's LINE and HINT lines — they point straight at the fix.
+- If an earlier fix this round is listed below and hit the same error, make a different \
+correction this time, not the same one again.
+
+Return ONLY the corrected query, inside a single ```sql fenced code block. No commentary."""
 
