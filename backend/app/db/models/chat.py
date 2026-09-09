@@ -106,6 +106,13 @@ class Message(Base):
     # without a migration to go looking.
     result_data: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
 
+    # assistant turns answered over POST /chat/stream: the activity trail the client showed while
+    # the agent worked — one entry per tool call (agent, tool, SQL, timing), already reduced to the
+    # shape ActivityTrail renders. Stored so reopening or refreshing a conversation shows the same
+    # trail instead of losing it with the tab. None for plain POST /chat turns and every row
+    # written before this existed.
+    activity: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
 
     chat: Mapped["Chat"] = relationship(back_populates="messages")

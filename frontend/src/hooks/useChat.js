@@ -56,6 +56,9 @@ const toMessage = (m) => ({
   routedTo: m.routed_to,
   reasoning: m.reasoning,
   data: m.data ?? null,
+  // the persisted activity trail — present on streamed assistant turns, on reopen and on the turn
+  // that just ran. Already in ActivityTrail's step shape; undefined leaves the trail unrendered.
+  steps: m.activity ?? undefined,
 });
 
 /**
@@ -120,12 +123,15 @@ export function useChat({ onChatCreated, onChatUpdated } = {}) {
         const isNew = chatIdRef.current === null;
         chatIdRef.current = response.chat_id;
 
+        const finalized = toMessage(response.message);
         setMessages((prev) => [
           ...prev,
           {
-            ...toMessage(response.message),
+            ...finalized,
             data: response.data ?? null,
-            steps: run.length ? settleSteps(run) : undefined,
+            // server-persisted trail is authoritative; fall back to the one built from the stream
+            // if the turn somehow came back without it
+            steps: finalized.steps ?? (run.length ? settleSteps(run) : undefined),
           },
         ]);
 

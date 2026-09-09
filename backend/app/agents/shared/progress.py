@@ -20,6 +20,58 @@ def sse_event(event: str, data: dict[str, Any]) -> str:
     return f"event: {event}\ndata: {json.dumps(data, separators=(',', ':'))}\n\n"
 
 
+def reduce_events(events: list[dict]) -> list[dict]:
+    """Fold the raw stream (tool_start / tool_end / stage) into the render-ready step list the
+    client draws — one row per tool call, completed in place by its matching tool_end. This is the
+    shape persisted on the message (Message.activity) so a reopened chat rebuilds the exact trail
+    the live turn showed. Key names match the client's step objects (subagentType, not
+    subagent_type) so the stored list needs no translation on the way back out.
+    """
+    steps: list[dict] = []
+    by_key: dict[str, dict] = {}
+
+    for ev in events:
+        etype = ev.get("type")
+        if etype == "tool_start":
+            key = ev.get("call_id")
+            if key in by_key:
+                continue
+            step = {
+                "key": key,
+                "agent": ev.get("agent"),
+                "tool": ev.get("tool"),
+                "sql": ev.get("sql"),
+                "subagentType": ev.get("subagent_type"),
+                "description": ev.get("description"),
+                "todos": ev.get("todos"),
+                "status": "running",
+            }
+            steps.append(step)
+            by_key[key] = step
+        elif etype == "tool_end":
+            step = by_key.get(ev.get("call_id"))
+            if step is None:
+                continue
+            step["status"] = "error" if ev.get("status") == "error" else "done"
+            step["elapsed"] = ev.get("elapsed")
+            if ev.get("sql"):
+                step["sql"] = ev["sql"]
+        elif etype == "stage":
+            key = f"stage-{ev.get('stage')}"
+            if key in by_key:
+                continue
+            step = {"key": key, "stage": ev.get("stage"), "status": "done"}
+            steps.append(step)
+            by_key[key] = step
+
+    # a tool still "running" when the stream closed did finish — the turn is over by the time this
+    # runs, the last tool_end just wasn't drained
+    for step in steps:
+        if step.get("status") == "running":
+            step["status"] = "done"
+    return steps
+
+
 class ProgressChannel:
     """Created per streamed turn, inside the SSE generator so it binds to the running loop.
 

@@ -100,6 +100,7 @@ async def append_turn(
     routed_to: Optional[str] = None,
     result_data: Optional[dict] = None,
     reasoning: Optional[str] = None,
+    activity: Optional[list] = None,
 ) -> list[Message]:
     """Write a question and its answer as one unit.
 
@@ -121,6 +122,7 @@ async def append_turn(
             routed_to=routed_to,
             result_data=result_data,
             reasoning=reasoning,
+            activity=activity,
         ),
     ]
     session.add_all(messages)

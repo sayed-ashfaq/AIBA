@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from app.agents.orchestrator.context import AgentContext
 from app.agents.orchestrator.deep_agent import agent
-from app.agents.shared.progress import ProgressChannel, sse_event
+from app.agents.shared.progress import ProgressChannel, reduce_events, sse_event
 from app.agents.verifier.verify import verify_turn
 from app.core.dependencies import CurrentUser
 from app.core.logging import get_logger, log_duration
@@ -45,6 +45,10 @@ class MessageResponse(BaseModel):
     created_at: datetime
     # only filled in when a conversation is being reopened — see `of`
     data: Optional[QueryData] = None
+    # the agent's activity trail for a streamed turn — one entry per tool call, in the shape the
+    # client's ActivityTrail renders. Sent both on the just-run turn and on reopen, so the trail
+    # survives a refresh or a chat switch. None for plain (non-streamed) turns and old rows.
+    activity: Optional[list] = None
 
     @classmethod
     def of(cls, message: Message, with_data: bool = False) -> "MessageResponse":
@@ -60,6 +64,7 @@ class MessageResponse(BaseModel):
             reasoning=message.reasoning,
             created_at=message.created_at,
             data=result_service.from_storage(message.result_data) if with_data else None,
+            activity=message.activity,
         )
 
 
@@ -132,10 +137,16 @@ def _agent_input(history: list[Message], message: str) -> dict:
 
 
 async def _finalize_turn(
-    session: SessionDep, chat_row: Chat, question: str, result: dict, reasoning: Optional[str]
+    session: SessionDep,
+    chat_row: Chat,
+    question: str,
+    result: dict,
+    reasoning: Optional[str],
+    activity: Optional[list] = None,
 ) -> ChatResponse:
     """Turn the agent's raw result into the stored turn and the response. Shared by both endpoints
-    so the streamed path and the plain path persist and reply identically."""
+    so the streamed path and the plain path persist and reply identically. `activity` is the
+    reduced tool-call trail — only the streamed path has one."""
     reply = _final_reply(result["messages"])
     routed_to = _routed_to(result["messages"])
     data = result_service.from_agent_files(result.get("files", {}))
@@ -152,6 +163,7 @@ async def _finalize_turn(
         routed_to=routed_to,
         result_data=result_service.for_storage(data),
         reasoning=reasoning,
+        activity=activity,
     )
 
     return ChatResponse(
@@ -221,19 +233,26 @@ async def chat_stream(
             context = AgentContext(
                 chat_id=chat_row.id, db_context=db_context, emit=channel.emit
             )
+            # kept alongside the stream so the same trail the client sees can be persisted on the
+            # message — otherwise it's gone the moment the tab is refreshed or the chat switched
+            trail: list[dict] = []
             with log_duration("Total query completion"):
                 agent_task = asyncio.create_task(
                     asyncio.to_thread(agent.invoke, agent_input, context=context)
                 )
                 async for event in channel.drain(agent_task):
+                    trail.append(event)
                     yield sse_event("step", event)
                 result = agent_task.result()  # re-raises an agent failure
 
-            yield sse_event("step", {"type": "stage", "stage": "verifying"})
+            verifying = {"type": "stage", "stage": "verifying"}
+            trail.append(verifying)
+            yield sse_event("step", verifying)
             reasoning = await _review(request.message, result)
 
             response = await _finalize_turn(
-                session, chat_row, request.message, result, reasoning
+                session, chat_row, request.message, result, reasoning,
+                activity=reduce_events(trail),
             )
             yield sse_event("done", response.model_dump(mode="json"))
         except Exception:
