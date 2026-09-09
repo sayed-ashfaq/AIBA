@@ -39,6 +39,65 @@ export function sendChatMessage(message, chatId) {
   });
 }
 
+// Same turn as sendChatMessage, over POST /chat/stream: the server sends Server-Sent Events as the
+// agent works. `onStep` is called with each `step` payload (a tool starting/finishing, or a named
+// stage); the promise resolves with the final `done` payload, which has the same shape
+// sendChatMessage returns. An `error` frame — the turn failed after streaming began — rejects.
+export async function sendChatMessageStream(message, chatId, { onStep } = {}) {
+  let response;
+  try {
+    response = await fetch(`${BASE_URL}/chat/stream`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ message, chat_id: chatId ?? null }),
+    });
+  } catch (err) {
+    throw new ApiError(`Can't reach the server — is the backend running? (${err.message})`, 0);
+  }
+
+  if (!response.ok || !response.body) {
+    const body = await response.json().catch(() => null);
+    throw new ApiError(body?.detail || `Request failed (${response.status})`, response.status);
+  }
+
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let done = null;
+
+  // one SSE frame: `event:` and `data:` lines, frames separated by a blank line
+  const handleFrame = (frame) => {
+    let event = "message";
+    const data = [];
+    for (const line of frame.split("\n")) {
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) return;
+    const payload = JSON.parse(data.join("\n"));
+    if (event === "step") onStep?.(payload);
+    else if (event === "done") done = payload;
+    else if (event === "error") throw new ApiError(payload.detail || "Something went wrong.", 500);
+  };
+
+  for (;;) {
+    const { value, done: streamDone } = await reader.read();
+    if (streamDone) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep;
+    while ((sep = buffer.indexOf("\n\n")) !== -1) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      if (frame.trim()) handleFrame(frame);
+    }
+  }
+  if (buffer.trim()) handleFrame(buffer);
+
+  if (!done) throw new ApiError("The server closed the connection before finishing.", 0);
+  return done;
+}
+
 export function listChats() {
   return request("/chats");
 }
@@ -73,6 +132,13 @@ export function deleteConnection(id) {
 
 export function getSchemaGraph() {
   return request("/connections/schema-graph");
+}
+
+// The whole graph as formatted text — every table with columns, types and FK lines, then a
+// consolidated edge list. This is what the SQL agent reads in graph schema mode. Pass "plain" for
+// the flat (non-graph) schema instead.
+export function getSchemaText(schemaType = "graph") {
+  return request(`/connections/schema?schema_type=${schemaType}`);
 }
 
 export function listAnnotations(connectionId) {

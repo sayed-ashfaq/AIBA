@@ -1,5 +1,6 @@
 import { Suspense, lazy } from "react";
 import ReasoningToggle from "./ReasoningToggle";
+import ActivityTrail from "./ActivityTrail";
 import Markdown from "./Markdown";
 import styles from "./Message.module.css";
 
@@ -14,6 +15,7 @@ export default function Message({ message }) {
   return (
     <div className={`${styles.row} ${isUser ? styles.rowUser : ""}`}>
       <div className={`${styles.bubble} ${isUser ? styles.bubbleUser : styles.bubbleAssistant}`}>
+        {!isUser && message.steps && <ActivityTrail steps={message.steps} />}
         {isUser ? <p className={styles.text}>{message.content}</p> : <Markdown>{message.content}</Markdown>}
         {message.data?.chart_image && (
           <Suspense fallback={null}>

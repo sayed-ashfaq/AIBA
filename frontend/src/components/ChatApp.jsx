@@ -72,7 +72,12 @@ export default function ChatApp({ auth }) {
         </header>
 
         <main className={styles.main}>
-          <ChatWindow messages={chat.messages} isSending={chat.isSending} error={chat.error} />
+          <ChatWindow
+            messages={chat.messages}
+            isSending={chat.isSending}
+            steps={chat.steps}
+            error={chat.error}
+          />
           <ChatInput onSend={chat.sendMessage} disabled={chat.isSending} />
         </main>
       </div>

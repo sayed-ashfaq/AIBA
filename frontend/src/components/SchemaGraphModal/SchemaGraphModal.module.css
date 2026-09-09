@@ -22,10 +22,39 @@
   border-color: var(--color-accent);
 }
 
+.toolbarRight {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 .summary {
   font-size: 12px;
   color: var(--color-text-secondary);
   white-space: nowrap;
+}
+
+.copyButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 6px 10px;
+  font-size: 12px;
+  font-weight: 500;
+  white-space: nowrap;
+  color: var(--color-text-secondary);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-sm);
+  background: var(--color-bg);
+}
+
+.copyButton:hover:not(:disabled) {
+  color: var(--color-text);
+  border-color: var(--color-accent);
+}
+
+.copyButton:disabled {
+  opacity: 0.6;
 }
 
 .body {

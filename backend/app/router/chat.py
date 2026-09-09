@@ -4,15 +4,17 @@ from datetime import datetime
 from typing import Literal, Optional
 
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from langchain_core.messages import AIMessage, AnyMessage, HumanMessage
 from pydantic import BaseModel, Field
 
 from app.agents.orchestrator.context import AgentContext
 from app.agents.orchestrator.deep_agent import agent
+from app.agents.shared.progress import ProgressChannel, sse_event
 from app.agents.verifier.verify import verify_turn
 from app.core.dependencies import CurrentUser
 from app.core.logging import get_logger, log_duration
-from app.db.models import Message
+from app.db.models import Chat, Message
 from app.db.session import SessionDep
 from app.services import chats as chat_service
 from app.services import connections as connection_service
@@ -105,15 +107,12 @@ def _routed_to(messages: list[AnyMessage]) -> str:
     return "orchestrator"
 
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> ChatResponse:
-    logger.info("user %s: %s", user.id, request.message)
-
-    # Resolved here, not inside the agent: the agent graph is synchronous and can neither await the
-    # annotations read nor rebuild a connection. Stays None when the user has nothing active —
-    # plenty of questions never reach sql_agent, and those must still work without a connection.
-    db_context = await connection_service.get_active_db_context(session, user)
-
+async def _prepare_turn(
+    request: ChatRequest, user: CurrentUser, session: SessionDep
+) -> tuple[Chat, list[Message]]:
+    """Everything that must happen before any LLM work: resolve or create the chat row (ownership
+    checked here so posting into someone else's chat fails fast, not after 30s of inference) and
+    load its history."""
     if request.chat_id is None:
         chat_row = await chat_service.create_chat(
             session,
@@ -121,39 +120,33 @@ async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> 
             title=chat_service.derive_title(request.message),
             connection_id=user.active_connection_id,
         )
-        history: list[Message] = []
-    else:
-        # ownership checked here, before any LLM work — posting into someone else's chat must fail
-        # fast rather than after 30 seconds of inference
-        chat_row = await chat_service.get_owned_chat(session, user.id, request.chat_id)
-        history = await chat_service.load_history(session, chat_row.id)
+        return chat_row, []
 
-    with log_duration("Total query completion"):
-        # the graph is sync and spends most of its time in blocking LLM/driver calls, so it runs on
-        # a worker thread rather than stalling the event loop for the whole turn
-        result = await asyncio.to_thread(
-            agent.invoke,
-            {"messages": _to_lc_messages(history) + [HumanMessage(content=request.message)]},
-            context=AgentContext(chat_id=chat_row.id, db_context=db_context),
-        )
+    chat_row = await chat_service.get_owned_chat(session, user.id, request.chat_id)
+    history = await chat_service.load_history(session, chat_row.id)
+    return chat_row, history
 
+
+def _agent_input(history: list[Message], message: str) -> dict:
+    return {"messages": _to_lc_messages(history) + [HumanMessage(content=message)]}
+
+
+async def _finalize_turn(
+    session: SessionDep, chat_row: Chat, question: str, result: dict, reasoning: Optional[str]
+) -> ChatResponse:
+    """Turn the agent's raw result into the stored turn and the response. Shared by both endpoints
+    so the streamed path and the plain path persist and reply identically."""
     reply = _final_reply(result["messages"])
     routed_to = _routed_to(result["messages"])
     data = result_service.from_agent_files(result.get("files", {}))
     sql = result_service.sql_from_agent_files(result.get("files", {}))
 
-    # separate call, after the answer is already decided: the verifier reviews what just happened,
-    # it does not take part in producing it. Best-effort — see verify_turn's docstring — so a slow
-    # or failed review costs the review, not the turn.
-    with log_duration("Verifier review"):
-        reasoning = await asyncio.to_thread(verify_turn, request.message, reply, result["messages"])
-
-    # committed only now: a failure above leaves no half-written turn, and an abandoned new chat
+    # committed only now: a failure earlier leaves no half-written turn, and an abandoned new chat
     # leaves no empty row
     _, assistant = await chat_service.append_turn(
         session,
         chat_row,
-        question=request.message,
+        question=question,
         answer=reply,
         sql=sql,
         routed_to=routed_to,
@@ -170,4 +163,85 @@ async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> 
         reasoning=reasoning,
         data=data,
         message=MessageResponse.of(assistant),
+    )
+
+
+async def _review(question: str, result: dict) -> Optional[str]:
+    # separate call, after the answer is already decided: the verifier reviews what just happened,
+    # it does not take part in producing it. Best-effort — see verify_turn's docstring — so a slow
+    # or failed review costs the review, not the turn.
+    with log_duration("Verifier review"):
+        return await asyncio.to_thread(
+            verify_turn, question, _final_reply(result["messages"]), result["messages"]
+        )
+
+
+@router.post("/chat", response_model=ChatResponse)
+async def chat(request: ChatRequest, user: CurrentUser, session: SessionDep) -> ChatResponse:
+    logger.info("user %s: %s", user.id, request.message)
+
+    # Resolved here, not inside the agent: the agent graph is synchronous and can neither await the
+    # annotations read nor rebuild a connection. Stays None when the user has nothing active —
+    # plenty of questions never reach sql_agent, and those must still work without a connection.
+    db_context = await connection_service.get_active_db_context(session, user)
+    chat_row, history = await _prepare_turn(request, user, session)
+
+    with log_duration("Total query completion"):
+        # the graph is sync and spends most of its time in blocking LLM/driver calls, so it runs on
+        # a worker thread rather than stalling the event loop for the whole turn
+        result = await asyncio.to_thread(
+            agent.invoke,
+            _agent_input(history, request.message),
+            context=AgentContext(chat_id=chat_row.id, db_context=db_context),
+        )
+
+    reasoning = await _review(request.message, result)
+    return await _finalize_turn(session, chat_row, request.message, result, reasoning)
+
+
+@router.post("/chat/stream")
+async def chat_stream(
+    request: ChatRequest, user: CurrentUser, session: SessionDep
+) -> StreamingResponse:
+    """Same turn as POST /chat, but the agent's tool calls are streamed to the client as they
+    happen (Server-Sent Events) so it can show the work instead of a spinner. Frames:
+      event: step  — one tool started / finished, or a named stage ("verifying")
+      event: done  — the full ChatResponse payload, identical to what POST /chat returns
+      event: error — the turn failed after streaming began; detail is safe to show
+    """
+    logger.info("user %s (stream): %s", user.id, request.message)
+
+    db_context = await connection_service.get_active_db_context(session, user)
+    chat_row, history = await _prepare_turn(request, user, session)
+    agent_input = _agent_input(history, request.message)
+
+    async def events():
+        try:
+            channel = ProgressChannel()
+            context = AgentContext(
+                chat_id=chat_row.id, db_context=db_context, emit=channel.emit
+            )
+            with log_duration("Total query completion"):
+                agent_task = asyncio.create_task(
+                    asyncio.to_thread(agent.invoke, agent_input, context=context)
+                )
+                async for event in channel.drain(agent_task):
+                    yield sse_event("step", event)
+                result = agent_task.result()  # re-raises an agent failure
+
+            yield sse_event("step", {"type": "stage", "stage": "verifying"})
+            reasoning = await _review(request.message, result)
+
+            response = await _finalize_turn(
+                session, chat_row, request.message, result, reasoning
+            )
+            yield sse_event("done", response.model_dump(mode="json"))
+        except Exception:
+            logger.exception("chat stream failed for user %s", user.id)
+            yield sse_event("error", {"detail": "internal error — check server logs"})
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
     )

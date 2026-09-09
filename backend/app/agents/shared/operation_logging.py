@@ -79,17 +79,55 @@ class OperationLoggingMiddleware(AgentMiddleware):
             line += f"\n{body}"
         logger.info(line)
 
+    def _emit(self, request: ToolCallRequest, event_type: str, **extra: object) -> None:
+        """Forward one structured step event to the live SSE response, when this turn is being
+        streamed (AgentContext.emit is set). A no-op otherwise, so the plain /chat path and eval
+        runs are untouched. Never lets a progress failure break the tool call it's reporting on."""
+        context = getattr(request.runtime, "context", None)
+        emit = getattr(context, "emit", None)
+        if emit is None:
+            return
+
+        tool = request.tool_call["name"]
+        args = request.tool_call.get("args") or {}
+        payload: dict = {
+            "type": event_type,
+            "agent": self.agent_name,
+            "tool": tool,
+            "call_id": request.tool_call.get("id"),
+        }
+        # only the few args worth showing a user, and the query/code untruncated — the whole point
+        # is to see the actual SQL
+        if "sql" in args:
+            payload["sql"] = args["sql"]
+        if tool == "task":
+            payload["subagent_type"] = args.get("subagent_type")
+            payload["description"] = args.get("description")
+        if tool == "write_todos":
+            payload["todos"] = args.get("todos")
+        payload.update(extra)
+
+        try:
+            emit(payload)
+        except Exception:
+            logger.debug("progress emit failed", exc_info=True)
+
     def wrap_tool_call(
         self,
         request: ToolCallRequest,
         handler: Callable[[ToolCallRequest], "ToolMessage | Command"],
     ) -> "ToolMessage | Command":
         summary, body = _describe(request.tool_call["name"], request.tool_call["args"])
+        self._emit(request, "tool_start")
         start = time.perf_counter()
         try:
             result = handler(request)
         except Exception:
-            self._log(summary, body, f"failed after {time.perf_counter() - start:.2f}s")
+            elapsed = time.perf_counter() - start
+            self._log(summary, body, f"failed after {elapsed:.2f}s")
+            self._emit(request, "tool_end", status="error", elapsed=round(elapsed, 2))
             raise
-        self._log(summary, body, f"{time.perf_counter() - start:.2f}s")
+        elapsed = time.perf_counter() - start
+        self._log(summary, body, f"{elapsed:.2f}s")
+        self._emit(request, "tool_end", status="ok", elapsed=round(elapsed, 2))
         return result

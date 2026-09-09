@@ -12,8 +12,8 @@ LangGraph threads it to every tool in the run, main agent and subagents alike, v
 """
 
 import uuid
-from dataclasses import dataclass
-from typing import Optional
+from dataclasses import dataclass, field
+from typing import Callable, Optional
 
 from app.agents.subagents.sql_agent.db import DbContext
 
@@ -25,3 +25,9 @@ class AgentContext:
     # those must still work without a connection. Resolved by the router before invoke(), since
     # deep agents runs synchronously and can't await the annotations read mid-turn.
     db_context: Optional[DbContext] = None
+    # Set only when a turn is being streamed to the client (POST /chat/stream): a thread-safe
+    # callback the router hands in so OperationLoggingMiddleware can forward one structured event
+    # per tool call (started / finished) to the live SSE response. Stays None for the plain POST
+    # /chat path and for eval runs — logging still happens there, nothing is streamed. Excluded
+    # from eq/repr: it's a live sink, not part of the run's identity.
+    emit: Optional[Callable[[dict], None]] = field(default=None, compare=False, repr=False)

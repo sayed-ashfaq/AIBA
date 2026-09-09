@@ -1,15 +1,16 @@
 import { useEffect, useRef } from "react";
 import Message from "../Message/Message";
+import ActivityTrail from "../Message/ActivityTrail";
 import LoadingDots from "../common/LoadingDots";
 import ErrorBanner from "../common/ErrorBanner";
 import styles from "./ChatWindow.module.css";
 
-export default function ChatWindow({ messages, isSending, error }) {
+export default function ChatWindow({ messages, isSending, steps, error }) {
   const bottomRef = useRef(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-  }, [messages, isSending]);
+  }, [messages, isSending, steps]);
 
   return (
     <div className={styles.window}>
@@ -23,7 +24,7 @@ export default function ChatWindow({ messages, isSending, error }) {
 
       {isSending && (
         <div className={styles.pendingRow}>
-          <LoadingDots />
+          {steps && steps.length > 0 ? <ActivityTrail steps={steps} live /> : <LoadingDots />}
         </div>
       )}
 

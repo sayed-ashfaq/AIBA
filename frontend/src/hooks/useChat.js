@@ -1,8 +1,46 @@
 import { useCallback, useRef, useState } from "react";
-import { getChat, sendChatMessage } from "../api/client";
+import { getChat, sendChatMessageStream } from "../api/client";
 
 let nextId = 0;
 const newId = () => `msg-${Date.now()}-${nextId++}`;
+
+// Fold one streamed progress event into the running list of steps shown under the pending reply.
+// `tool_start` adds a row, `tool_end` completes the row with the same call id, `stage` adds a
+// named non-tool row (e.g. the verifier pass). Returns a new array so React re-renders.
+function reduceStep(steps, ev) {
+  if (ev.type === "tool_start") {
+    if (steps.some((s) => s.key === ev.call_id)) return steps;
+    return [
+      ...steps,
+      {
+        key: ev.call_id,
+        agent: ev.agent,
+        tool: ev.tool,
+        sql: ev.sql ?? null,
+        subagentType: ev.subagent_type ?? null,
+        description: ev.description ?? null,
+        todos: ev.todos ?? null,
+        status: "running",
+      },
+    ];
+  }
+  if (ev.type === "tool_end") {
+    return steps.map((s) =>
+      s.key === ev.call_id
+        ? { ...s, status: ev.status === "error" ? "error" : "done", elapsed: ev.elapsed, sql: ev.sql ?? s.sql }
+        : s,
+    );
+  }
+  if (ev.type === "stage") {
+    const key = `stage-${ev.stage}`;
+    if (steps.some((s) => s.key === key)) return steps;
+    return [...steps, { key, stage: ev.stage, status: "running" }];
+  }
+  return steps;
+}
+
+const settleSteps = (steps) =>
+  steps.map((s) => (s.status === "running" ? { ...s, status: "done" } : s));
 
 // Unary on purpose: `messages.map(toMessage)` would otherwise hand the array index to a second
 // parameter, which is a silent wrong answer rather than an error.
@@ -32,6 +70,9 @@ export function useChat({ onChatCreated, onChatUpdated } = {}) {
   const [isSending, setIsSending] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
+  // the live activity trail for the turn in flight — what the agent is doing right now. Cleared
+  // when the turn finishes; the finished copy is stashed on the assistant message instead.
+  const [steps, setSteps] = useState([]);
   const chatIdRef = useRef(null);
 
   // start a new conversation: no request needed, the chat row is created by the first message
@@ -64,15 +105,28 @@ export function useChat({ onChatCreated, onChatUpdated } = {}) {
       // shown immediately; the server's copy replaces nothing, so this keeps its temporary id
       setMessages((prev) => [...prev, { id: newId(), role: "user", content: trimmed }]);
       setIsSending(true);
+      setSteps([]);
+
+      // built up from the stream so it's available at finalize time without chasing setState
+      let run = [];
 
       try {
-        const response = await sendChatMessage(trimmed, chatIdRef.current);
+        const response = await sendChatMessageStream(trimmed, chatIdRef.current, {
+          onStep: (ev) => {
+            run = reduceStep(run, ev);
+            setSteps(run);
+          },
+        });
         const isNew = chatIdRef.current === null;
         chatIdRef.current = response.chat_id;
 
         setMessages((prev) => [
           ...prev,
-          { ...toMessage(response.message), data: response.data ?? null },
+          {
+            ...toMessage(response.message),
+            data: response.data ?? null,
+            steps: run.length ? settleSteps(run) : undefined,
+          },
         ]);
 
         if (isNew) onChatCreated?.({ id: response.chat_id, title: response.title });
@@ -81,6 +135,7 @@ export function useChat({ onChatCreated, onChatUpdated } = {}) {
         setError(err.message || "Something went wrong. Please try again.");
       } finally {
         setIsSending(false);
+        setSteps([]);
       }
     },
     [isSending, onChatCreated, onChatUpdated],
@@ -93,6 +148,7 @@ export function useChat({ onChatCreated, onChatUpdated } = {}) {
     newChat,
     openChat,
     isSending,
+    steps,
     isLoading,
     error,
   };

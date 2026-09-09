@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import ForceGraph2D from "react-force-graph-2d";
 import Modal from "../common/Modal";
-import { EditIcon } from "../common/icons";
+import { CopyIcon, EditIcon } from "../common/icons";
 import ColumnCommentModal from "./ColumnCommentModal";
 import * as api from "../../api/client";
 import styles from "./SchemaGraphModal.module.css";
@@ -62,9 +62,12 @@ export default function SchemaGraphModal({ connectionId, onClose }) {
   const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const [annotations, setAnnotations] = useState(new Map());
   const [editingColumn, setEditingColumn] = useState(null); // { node, columnName } | null
+  const [copyState, setCopyState] = useState("idle"); // idle | loading | copied | error
 
   const fgRef = useRef(null);
   const containerRef = useRef(null);
+  // the formatted graph-schema text, fetched once on first copy and reused after
+  const schemaTextRef = useRef(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -228,6 +231,29 @@ export default function SchemaGraphModal({ connectionId, onClose }) {
     });
   };
 
+  const handleCopySchema = async () => {
+    setCopyState("loading");
+    try {
+      if (schemaTextRef.current == null) {
+        const res = await api.getSchemaText("graph");
+        schemaTextRef.current = res.schema_text;
+      }
+      await navigator.clipboard.writeText(schemaTextRef.current);
+      setCopyState("copied");
+    } catch (err) {
+      console.warn("could not copy schema:", err.message);
+      setCopyState("error");
+    }
+    setTimeout(() => setCopyState("idle"), 2000);
+  };
+
+  const copyLabel = {
+    idle: "Copy full schema",
+    loading: "Loading…",
+    copied: "Copied",
+    error: "Copy failed",
+  }[copyState];
+
   const showLegend = schemaGroups.length >= 2;
 
   return (
@@ -240,11 +266,23 @@ export default function SchemaGraphModal({ connectionId, onClose }) {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
-        {graphData && (
-          <span className={styles.summary}>
-            {graphData.nodes.length} tables · {graphData.links.length} relationships · node size ≈ row count
-          </span>
-        )}
+        <div className={styles.toolbarRight}>
+          {graphData && (
+            <span className={styles.summary}>
+              {graphData.nodes.length} tables · {graphData.links.length} relationships · node size ≈ row count
+            </span>
+          )}
+          <button
+            type="button"
+            className={styles.copyButton}
+            onClick={handleCopySchema}
+            disabled={copyState === "loading"}
+            title="Copy the full formatted schema (tables, columns, foreign keys) to the clipboard"
+          >
+            <CopyIcon />
+            {copyLabel}
+          </button>
+        </div>
       </div>
 
       <div className={styles.body}>

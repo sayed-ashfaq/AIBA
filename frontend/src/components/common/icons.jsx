@@ -37,6 +37,20 @@ export function EditIcon() {
   );
 }
 
+export function CopyIcon() {
+  return (
+    <svg width="12" height="12" viewBox="0 0 14 14" fill="none">
+      <rect x="4.5" y="4.5" width="8" height="8" rx="1.5" stroke="currentColor" strokeWidth="1.3" />
+      <path
+        d="M9.5 4.5V3C9.5 2.17 8.83 1.5 8 1.5H3C2.17 1.5 1.5 2.17 1.5 3V8C1.5 8.83 2.17 9.5 3 9.5H4.5"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function PlusIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
