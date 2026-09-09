@@ -82,6 +82,22 @@ def _as_number(v: Any):
     return None
 
 
+def _round_tol(na: float, nb: float) -> float | None:
+    """Tolerance implied when one side was rounded to a few decimals. If either value is exact
+    at k in {1,2,3} decimal places, returns 0.5 * 10**-k for the loosest such k. k=0 is
+    excluded on purpose so integer-valued metrics (counts) stay compared strictly.
+    """
+    ks: list[int] = []
+    for x in (na, nb):
+        if math.isinf(x) or math.isnan(x):
+            continue
+        for k in (1, 2, 3):
+            if round(x, k) == x:
+                ks.append(k)
+                break
+    return 0.5 * 10 ** -min(ks) if ks else None
+
+
 def _cells_equal(a: Any, b: Any, tol: float) -> bool:
     a, b = normalize_cell(a), normalize_cell(b)
     if a is None or b is None:
@@ -90,7 +106,11 @@ def _cells_equal(a: Any, b: Any, tol: float) -> bool:
     if na is not None and nb is not None:
         if math.isnan(na) or math.isnan(nb):
             return math.isnan(na) and math.isnan(nb)
-        return abs(na - nb) <= tol + tol * max(abs(na), abs(nb))
+        tol_eff = tol + tol * max(abs(na), abs(nb))
+        rt = _round_tol(na, nb)
+        if rt is not None:
+            tol_eff = max(tol_eff, rt)
+        return abs(na - nb) <= tol_eff
     return a == b or str(a) == str(b)
 
 
@@ -228,6 +248,47 @@ def _subset_match(
     return None
 
 
+_UNMERGE_SEPS = (" ", ", ", " - ", "-", "|", "/")
+
+
+def _try_unmerge(narrow_cols, narrow_rows, wide_cols, wide_rows):
+    """When one result merged two text columns into one ("first || ' ' || last"), split that
+    column back so the two results line up on the same shape.
+
+    Detection is by multiset of concatenated values, so it does not depend on row order. On a
+    hit, the merged column is replaced in place by the two wide-side columns it reconstructs
+    (using the wide side's names). Returns (cols, rows) or None.
+    """
+    if not narrow_rows or len(narrow_rows) != len(wide_rows):
+        return None
+    n_wide = len(wide_cols)
+    for j in range(len(narrow_cols)):
+        jv = [normalize_cell(r[j]) for r in narrow_rows]
+        if not all(isinstance(v, str) and v for v in jv):
+            continue
+        jbag = sorted(jv)
+        for x in range(n_wide):
+            xv = [normalize_cell(r[x]) for r in wide_rows]
+            if not all(isinstance(v, str) for v in xv):
+                continue
+            for y in range(n_wide):
+                if y == x:
+                    continue
+                yv = [normalize_cell(r[y]) for r in wide_rows]
+                if not all(isinstance(v, str) for v in yv):
+                    continue
+                for sep in _UNMERGE_SEPS:
+                    if sorted(f"{p}{sep}{q}" for p, q in zip(xv, yv)) != jbag:
+                        continue
+                    parts = [v.split(sep, 1) for v in jv]
+                    if any(len(p) != 2 for p in parts):
+                        continue
+                    new_cols = list(narrow_cols[:j]) + [wide_cols[x], wide_cols[y]] + list(narrow_cols[j + 1 :])
+                    new_rows = [list(r[:j]) + p + list(r[j + 1 :]) for r, p in zip(narrow_rows, parts)]
+                    return new_cols, new_rows
+    return None
+
+
 def compare_results(
     gold: tuple[Sequence[str], Sequence[Sequence]],
     got: tuple[Sequence[str], Sequence[Sequence]],
@@ -247,6 +308,18 @@ def compare_results(
     """
     g_cols, g_rows = list(gold[0]), list(gold[1])
     a_cols, a_rows = list(got[0]), list(got[1])
+
+    # a name-merge ("first || ' ' || last" on one side, split columns on the other) is cosmetic
+    # — reconcile the shapes before any comparison
+    if len(g_cols) != len(a_cols):
+        if len(a_cols) < len(g_cols):
+            merged = _try_unmerge(a_cols, a_rows, g_cols, g_rows)
+            if merged is not None:
+                a_cols, a_rows = merged
+        else:
+            merged = _try_unmerge(g_cols, g_rows, a_cols, a_rows)
+            if merged is not None:
+                g_cols, g_rows = merged
 
     same_width = len(g_cols) == len(a_cols)
     if same_width:
@@ -407,5 +480,34 @@ if __name__ == "__main__":
     no(
         compare_results((["x"], [(0,)]), (["x"], [(None,)]), ordered=False),
         "zero is not null",
+    )
+    ok(
+        compare_results((["pct"], [(70.20068,)]), (["pct"], [(70.2,)]), ordered=False),
+        "rounded to 1dp within implied tolerance",
+    )
+    ok(
+        compare_results((["pct"], [(3.0806568,)]), (["pct"], [(3.08,)]), ordered=False),
+        "rounded to 2dp within implied tolerance",
+    )
+    no(
+        compare_results((["n"], [(5.0,)]), (["n"], [(5.4,)]), ordered=False),
+        "k=0 stays strict: 5.0 vs 5.4",
+    )
+    ok(
+        compare_results(
+            (["id", "first_name", "last_name", "c"], [(1, "Eleanor", "Hunt", 46), (2, "Karl", "Seal", 45)]),
+            (["id", "name", "c"], [(1, "Eleanor Hunt", 46), (2, "Karl Seal", 45)]),
+            ordered=False,
+            column_match="subset",
+        ),
+        "agent merged first+last into one 'name' column",
+    )
+    ok(
+        compare_results(
+            (["name", "c"], [("Gina Degeneres", 42), ("Walter Torn", 41)]),
+            (["first_name", "last_name", "c"], [("Gina", "Degeneres", 42), ("Walter", "Torn", 41)]),
+            ordered=False,
+        ),
+        "gold merged the name; agent split it",
     )
     print("\nall self-tests passed")
