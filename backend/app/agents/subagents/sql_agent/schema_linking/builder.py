@@ -19,15 +19,39 @@ from app.core.logging import get_logger, log_duration
 logger = get_logger(__name__)
 
 
+# budget for the column section of an embedding doc — bge-small tops out at 512
+# tokens, and dense signal matches better than a long noisy list
+_EMBED_COLS_MAX_CHARS = 800
+_EMBED_VALS_PER_COL = 8
+
+
+def _columns_for_embedding(table: models.Table) -> str:
+    """`name (val, val, ...)` per column — the sample values are what lets a question
+    like "Jeddah terminal" match the table whose `terminal` column holds 'Jeddah'.
+    Values come from introspection, which already drops PII/secret columns. Capped
+    so a wide table doesn't produce an oversized, diluted vector."""
+    parts: list[str] = []
+    used = 0
+    for c in table.columns:
+        piece = c.name
+        if c.sample_values:
+            piece += " (" + ", ".join(c.sample_values[:_EMBED_VALS_PER_COL]) + ")"
+        if parts and used + len(piece) + 2 > _EMBED_COLS_MAX_CHARS:
+            break
+        parts.append(piece)
+        used += len(piece) + 2
+    return ", ".join(parts)
+
+
 def embedding_text(table: models.Table) -> str:
     """The string embedded to represent a table for anchor matching.
 
-    With an LLM description (the normal case): the sentence plus the column list,
-    so both "what is this table" and column-term questions have something to
-    match. Without one (model omitted it / describe=False): fall back to the
-    Step 6 baseline of name + columns.
+    With an LLM description (the normal case): the sentence plus the columns and
+    their sample values, so "what is this table", column-term, and value-term
+    questions ("cancelled flights", "Jeddah terminal") all have something to match.
+    Without one (model omitted it / describe=False): fall back to name + columns.
     """
-    cols = ", ".join(c.name for c in table.columns)
+    cols = _columns_for_embedding(table)
     if table.description:
         return f"{table.description}\nColumns: {cols}"
     return f"{table.name}: {cols}"

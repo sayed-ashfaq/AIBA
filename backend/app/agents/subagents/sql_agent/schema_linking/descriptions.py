@@ -23,26 +23,33 @@ logger = get_logger(__name__)
 
 _BATCH_SIZE = 12
 
-_PROMPT = """You are given a list of database tables, one per line, each as:
+_PROMPT = """You are given database tables, one per line, each as:
     <table_name> | columns: ... | references: ... | sample values: ...
 
-For every table, write ONE concise present-tense sentence describing what its
-rows represent and the key things it holds. Output one line per table, in the
-form:
+For each table write ONE present-tense sentence that will be EMBEDDED and matched
+against user questions — so write it as a retrieval target, not a data-model note:
+- say what one row represents and the kind of business question it answers
+- name the key things someone would filter or group by (status, type,
+  location/terminal, date, category), using the words a user would actually say
+- fold in common synonyms for the entity when they fit (guest / VIP / passenger /
+  member; shipment / order / delivery; staff / employee)
+
+Do not enumerate every column. Output one line per table, exactly:
     <table_name>: <sentence>
 
-Use the exact table_name given (keep any schema prefix). Do not enumerate every
-column, do not add blank lines, headings, or commentary."""
+Use the table_name exactly as given (keep any schema prefix). No blank lines,
+headings, or commentary."""
 
 
 def _table_summary(table: models.Table) -> str:
     """Compact one-line brief handed to the model for a single table."""
     cols = ", ".join(c.name for c in table.columns)
     refs = ", ".join(sorted({fk.to_table for fk in table.foreign_keys}))
-    # a flavour of the values is enough to write a one-liner — a fully enumerated
-    # column can carry ~30 of them, which this prompt doesn't need
+    # a flavour of the values is enough to write a one-liner, and to let the model
+    # spot which columns are the filterable dimensions — a fully enumerated column
+    # can carry ~30 values, which this prompt doesn't need
     samples = "; ".join(
-        f"{c.name}=[{', '.join(c.sample_values[:5])}]" for c in table.columns if c.sample_values
+        f"{c.name}=[{', '.join(c.sample_values[:8])}]" for c in table.columns if c.sample_values
     )
     parts = [f"{table.name} | columns: {cols}"]
     if refs:

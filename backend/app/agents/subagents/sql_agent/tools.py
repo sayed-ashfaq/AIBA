@@ -57,16 +57,23 @@ FULL_INLINE_THRESHOLD = 20
 SAMPLE_ROWS = 10
 
 # a real schema is columns + types + FK lines; a schema_context shorter than this is a stub — the
-# agent passed a table name or a paraphrase instead of the get_schema output. Fall back to the full
-# schema so sql_generator isn't writing blind (this is the #1 cause of invented column names).
+# agent passed a table name or a paraphrase instead of the get_schema output.
 _MIN_SCHEMA_CONTEXT = 120
 
+# EXPERIMENT: the full-flat-schema fallback is disabled. In graph mode get_schema now returns ONLY
+# the linker's slice; if the linker errors or matches nothing the agent is told to re-ask with a
+# sharper task instead of being handed the whole schema. Restore the `return db_context.schema_text`
+# lines in resolve_schema (and the reassignment in sql_generator, and schema_text in _fix_sql) to
+# undo.
+_NO_SLICE = (
+    "Schema linking selected no tables for this task. Re-call get_schema with a more specific "
+    "description — name the metric and the dimensions you need (e.g. 'revenue by month from payments')."
+)
 
 
 def resolve_schema(db_context, task: str) -> str:
-    """The schema text for a task. Plain mode: the full flat schema. Graph mode:
-    schema_linking's question-relevant slice, falling back to the full schema if
-    linking produced nothing."""
+    """The schema text for a task. Plain mode: the full flat schema. Graph mode: schema_linking's
+    question-relevant slice ONLY — no full-schema fallback (see _NO_SLICE note above)."""
     if getattr(db_context, "schema_mode", "plain") != "graph" or db_context.schema_graph is None:
         return db_context.schema_text
 
@@ -76,10 +83,8 @@ def resolve_schema(db_context, task: str) -> str:
         focused = schema_linking.link(task, db_context.schema_graph)
         sliced = schema_linking.render_focused(focused, db_context.schema_graph)
     except Exception:
-        # graph mode is experimental — never let a linking failure break a query the flat
-        # schema could have answered
-        logger.warning("graph schema linking errored for %r — using full schema", task, exc_info=True)
-        return db_context.schema_text
+        logger.warning("graph schema linking errored for %r — returning no slice", task, exc_info=True)
+        return _NO_SLICE
 
     if sliced:
         logger.info(
@@ -87,8 +92,8 @@ def resolve_schema(db_context, task: str) -> str:
             len(focused.path_tables), task, len(db_context.schema_graph.tables),
         )
         return sliced
-    logger.info("graph schema: linking found nothing for %r — using full schema", task)
-    return db_context.schema_text
+    logger.info("graph schema: linking found nothing for %r — returning no slice", task)
+    return _NO_SLICE
 
 
 @tool
@@ -123,11 +128,11 @@ def sql_generator(schema_context: str, task: str, runtime: ToolRuntime) -> str:
         return _NO_CONNECTION
 
     if len(schema_context.strip()) < _MIN_SCHEMA_CONTEXT:
+        # EXPERIMENT: no full-schema fallback — write with whatever thin context was passed and
+        # let the result show whether the slice was enough
         logger.warning(
-            "sql_generator got a %d-char schema_context — falling back to the full schema",
-            len(schema_context.strip()),
+            "sql_generator got a %d-char schema_context (no fallback)", len(schema_context.strip())
         )
-        schema_context = db_context.schema_text
 
     system_prompt = SQL_GENERATION_PROMPT.format(dialect=db_context.db_type)
     content = f"Schema:\n{schema_context}\n\nTask:\n{task}"
@@ -140,11 +145,12 @@ def sql_generator(schema_context: str, task: str, runtime: ToolRuntime) -> str:
         return f"Generation error: {exc}"
 
 
-def _fix_sql(failing_sql: str, db_error: str, db_context, task: str, prior: list[tuple[str, str]]) -> str:
+def _fix_sql(failing_sql: str, db_error: str, db_context, task: str, schema: str, prior: list[tuple[str, str]]) -> str:
     """One focused-repair LLM call. Returns raw (fenced) SQL for the caller to clean and re-run.
 
-    `prior` is every (sql, error) pair tried so far this round, newest last — the entries before
-    the last one are shown to the model so it doesn't re-make a fix that already failed.
+    `schema` is the resolved slice (EXPERIMENT: no full-schema fallback here either). `prior` is
+    every (sql, error) pair tried so far this round, newest last — the entries before the last one
+    are shown to the model so it doesn't re-make a fix that already failed.
     """
     earlier = (
         "\n".join(f"- tried: {s}\n  still failed: {e}" for s, e in prior[:-1])
@@ -153,7 +159,7 @@ def _fix_sql(failing_sql: str, db_error: str, db_context, task: str, prior: list
     )
     system_prompt = SQL_FIX_PROMPT.format(dialect=db_context.db_type)
     content = (
-        f"Schema:\n{db_context.schema_text}\n\n"
+        f"Schema:\n{schema}\n\n"
         f"Data request:\n{task or '(not provided)'}\n\n"
         f"Failing SQL:\n{failing_sql}\n\n"
         f"Database error:\n{db_error}\n\n"
@@ -191,6 +197,7 @@ def _execute_with_repair(raw_sql: str, db_context, task: str):
     attempts: list[tuple[str, str]] = []  # (sql text tried, error) — newest last
     candidate = raw_sql
     last_exc: NL2SQLError | None = None
+    repair_schema: str | None = None  # resolved slice, lazily, only if a repair is needed
 
     for round_no in range(_MAX_SQL_FIXES + 1):
         failing: str
@@ -210,7 +217,9 @@ def _execute_with_repair(raw_sql: str, db_context, task: str):
             break
         logger.info("execute_sql error (repair %d/%d): %s", round_no + 1, _MAX_SQL_FIXES, last_exc)
 
-        fixed = _fix_sql(failing, str(last_exc), db_context, task, attempts)
+        if repair_schema is None:
+            repair_schema = resolve_schema(db_context, task)
+        fixed = _fix_sql(failing, str(last_exc), db_context, task, repair_schema, attempts)
         if _tables_changed(failing, fixed, dialect):
             logger.info(
                 "execute_sql repair changed the table set (%s -> %s) — rejecting, surfacing original error",

@@ -40,6 +40,11 @@ DEFAULT_NEIGHBOUR_HOPS = 0   # sphere expansion off by default — 1-hop explode
                             # left as a lever for the eval harness, expands from anchors only
 _HUB_DEGREE = 8             # an anchor with this many FK edges is a hub; don't sphere-expand it
 
+# a second matching pass on the WHOLE question text, unioned with the entity-phrase anchors.
+# entity extraction can reduce a question to words the schema doesn't use ("guests" when the
+# tables say "passengers"); embedding the raw question is the recall backstop for that.
+DEFAULT_QUESTION_TOP_K = 2
+DEFAULT_QUESTION_MIN_SCORE = 0.25   # a full sentence dilutes cosine — a lower floor than the phrase pass
 
 _MAX_ENTITIES = 5
 
@@ -160,6 +165,28 @@ def match_anchors(
     return anchors or ([overall_best[1]] if overall_best else [])
 
 
+def question_anchors(
+    sg: models.SchemaGraph, question: str, *, top_k: int, min_score: float
+) -> list[str]:
+    """Top non-bridge tables from embedding the whole question — the recall backstop
+    for when entity extraction dropped the words that actually match the schema."""
+    if sg.embeddings is None or sg.embeddings.size == 0 or not question.strip():
+        return []
+    qvec = embeddings.embed_query(question)
+    out: list[str] = []
+    for idx, score in embeddings.cosine_topk(qvec, sg.embeddings, k=top_k + 2):
+        if score < min_score:
+            break
+        table = sg.table_names[idx]
+        if _is_bridge_like(sg.tables[table]):
+            continue
+        out.append(table)
+        logger.info("anchor  %-42s <- %-24s (%.3f)", table, "[question]", score)
+        if len(out) >= top_k:
+            break
+    return out
+
+
 def link(
     question: str,
     sg: models.SchemaGraph,
@@ -168,6 +195,8 @@ def link(
     top_k: int = DEFAULT_TOP_K,
     min_score: float = DEFAULT_MIN_SCORE,
     neighbour_hops: int = DEFAULT_NEIGHBOUR_HOPS,
+    question_top_k: int = DEFAULT_QUESTION_TOP_K,
+    question_min_score: float = DEFAULT_QUESTION_MIN_SCORE,
 ) -> models.FocusedSchema:
     """Run the full pipeline. Empty FocusedSchema when no anchor matches.
 
@@ -178,6 +207,11 @@ def link(
     if entities is None:
         entities = extract_entities(question)
     anchors = match_anchors(sg, entities, top_k=top_k, min_score=min_score)
+    anchors = list(
+        dict.fromkeys(
+            [*anchors, *question_anchors(sg, question, top_k=question_top_k, min_score=question_min_score)]
+        )
+    )
     if not anchors:
         logger.info("no anchors matched for %r — returning empty FocusedSchema", question)
         return models.FocusedSchema(question=question, anchor_tables=[], path_tables=[], edges=[])
