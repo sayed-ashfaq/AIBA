@@ -68,12 +68,17 @@ similar differ between Postgres and MySQL, so write for {dialect} specifically.
 table or column whose name in the schema is not all-lowercase (e.g. scheduledDeparture, \
 loungeId, "flightName") MUST be written in double quotes, spelled exactly as the schema shows \
 it: "scheduledDeparture". If the schema already shows a name in double quotes, keep them.
-- Filtering on a text value the user named: the schema shows real example values for many \
-columns as `-- e.g. ...`. The stored form often differs from how the user phrased it in case or \
-spacing ("jeddah" vs "Jeddah", "ruh t5" vs "RUH-T5"). Unless the question needs an exact code \
-match, filter with a case-insensitive partial match — Postgres `WHERE col ILIKE '%jeddah%'`, \
-MySQL `WHERE LOWER(col) LIKE '%jeddah%'` — and pattern on the distinctive part of what the user \
-said, not their whole phrase. Look at the example values first and match your literal to them.
+- Filtering on a text value the user named: check the column's value hint in the schema first.
+  - `-- all values: A, B, C` is the column's COMPLETE set. Pick the entry that matches what the \
+user meant and filter with `=` on that exact literal, spelled and cased exactly as listed \
+(e.g. user says "ruh t5", the list shows `RUH-T5` -> `WHERE col = 'RUH-T5'`).
+  - `-- e.g. ...`, or no hint at all: you only have examples. Do NOT use `=` on the user's \
+wording — the stored form almost never matches their phrasing in case, spacing or punctuation \
+("jeddah" vs "Jeddah", "ruh t5" vs "RUH-T5"). Filter with a case-insensitive partial match on \
+the distinctive part of what they said, not their whole phrase — Postgres \
+`WHERE col ILIKE '%t5%'`, MySQL `WHERE LOWER(col) LIKE '%t5%'`.
+  - When in doubt, prefer ILIKE over `=`. Only use `=` on a user-named text value when it \
+appears verbatim in an `-- all values:` list or the question is clearly quoting an exact code.
 - Prefer explicit column names over SELECT *.
 - Do NOT add a LIMIT clause of your own. The system caps result size on its own, and a LIMIT you \
 write throws away rows that are needed further down. The one exception is when the question asks \

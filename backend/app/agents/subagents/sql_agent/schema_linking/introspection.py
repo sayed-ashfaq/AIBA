@@ -2,9 +2,15 @@
 
 Structure comes from SQLAlchemy's inspector using *bulk* reflection
 (get_multi_* — a handful of catalog queries total, not 3-4 per table), the same
-approach db.py's _introspect uses. On top of that, an optional pass samples a
-few real values for low-cardinality text columns, so later stages can show the
+approach db.py's _introspect uses. On top of that, an optional pass samples
+real values for low-cardinality text columns, so later stages can show the
 SQL generator the actual literals to filter on ("rating = 'PG-13'").
+
+For a column whose whole distinct set fits in `_ENUMERATE_MAX`, we keep *every*
+value and mark it complete — the generator can then match the user's wording
+against the real list (e.g. "RUH T5" -> the stored "RUH-T5") instead of guessing
+at the format. Above that it's high-cardinality: keep nothing, the generator
+falls back to a case-insensitive partial match.
 
 No graph, no embeddings, no LLM. Reuses db.qualify / db.schemas_to_introspect so
 the qualified names line up exactly with the flat-schema path.
@@ -25,8 +31,14 @@ logger = get_logger(__name__)
 
 # A sampled column is only useful if its values behave like a small enumerated
 # set. These are the defaults; callers can override per connection if needed.
-_SAMPLE_SIZE = 3          # how many example values to keep
-_MAX_DISTINCT = 20        # more distinct values than this -> treat as high-cardinality, keep none
+_ENUMERATE_MAX = 30       # distinct values <= this -> keep the WHOLE set, mark it complete
+_SAMPLE_SIZE = 3          # fallback: how many examples to keep when the full set won't fit the budget
+# Cap on the rendered "v1, v2, ..." string per column. The graph slice handed to
+# sql_generator is meant to stay small; past this we trim to a few examples and
+# drop the "complete" flag. Set low enough that borderline-dirty columns (a
+# "shift" free-text field with 27 half-structured values) fall back to examples
+# while every clean enum — the median enumerated column is ~37 chars — stays whole.
+_MAX_ENUM_CHARS = 300
 _STATEMENT_TIMEOUT_MS = 5000  # a sampling query must never hold things up
 
 # A value longer than this is prose, a blob, an email, or a hash — never a
@@ -60,7 +72,7 @@ def introspect(
     *,
     sample: bool = True,
     sample_size: int = _SAMPLE_SIZE,
-    max_distinct: int = _MAX_DISTINCT,
+    enumerate_max: int = _ENUMERATE_MAX,
 ) -> dict[str, models.Table]:
     """Reflect every user table into a models.Table. `sample=False` skips all
     value sampling (no extra queries) — useful while iterating."""
@@ -91,10 +103,13 @@ def introspect(
                 cols = []
                 for c in columns:
                     samples: tuple[str, ...] = ()
+                    complete = False
                     # Skip PKs (unique by definition) and FK columns (they hold ids,
                     # not a meaningful value set) before spending a query on them.
                     if sample and c["name"] not in pk_cols and c["name"] not in fk_cols:
-                        samples = _sample_values(conn, engine, qname, c, sample_size, max_distinct)
+                        samples, complete = _sample_values(
+                            conn, engine, qname, c, sample_size, enumerate_max
+                        )
                     cols.append(
                         models.Column(
                             name=c["name"],
@@ -102,6 +117,7 @@ def introspect(
                             pk=c["name"] in pk_cols,
                             nullable=bool(c.get("nullable", True)),
                             sample_values=samples,
+                            values_complete=complete,
                         )
                     )
                 tables[qname] = models.Table(name=qname, columns=cols)
@@ -127,59 +143,79 @@ def introspect(
 
     edge_count = sum(len(t.foreign_keys) for t in tables.values())
     sampled = sum(1 for t in tables.values() for c in t.columns if c.sample_values)
+    complete = sum(1 for t in tables.values() for c in t.columns if c.values_complete)
     logger.info(
-        "introspected %d tables, %d FK edges, %d columns sampled", len(tables), edge_count, sampled
+        "introspected %d tables, %d FK edges, %d columns sampled (%d with the full value set)",
+        len(tables), edge_count, sampled, complete,
     )
     return tables
 
 
-def _sample_values(conn, engine: Engine, qualified_table: str, coldict: dict, size: int, max_distinct: int) -> tuple[str, ...]:
-    """A few example values for one column, or () if it isn't a small label set."""
+def _sample_values(
+    conn, engine: Engine, qualified_table: str, coldict: dict, size: int, enumerate_max: int
+) -> tuple[tuple[str, ...], bool]:
+    """Values for one column as (values, complete).
+
+    complete=True  -> `values` is the column's entire distinct set.
+    complete=False -> `values` is examples only (possibly empty) — high-cardinality,
+                      skipped, or the full set was too big to inline.
+    """
     col_name = coldict["name"]
     lname = col_name.lower()
     if any(hint in lname for hint in _SENSITIVE_NAME_HINTS) or lname.endswith("id"):
-        return ()  # secret/contact column, or an id stored as text — never a useful hint
+        return (), False  # secret/contact column, or an id stored as text — never a useful hint
 
     col_type = coldict["type"]
 
     # A Postgres ENUM already carries its full label set from reflection — no query.
     enums = getattr(col_type, "enums", None)
     if enums:
-        return tuple(str(v).strip() for v in enums[:12])
+        labels = [str(v).strip() for v in enums if str(v).strip()]
+        return _fit_budget(labels, size)
 
     # Only text columns are worth sampling. `Text` subclasses `String`, so this
     # covers VARCHAR / CHAR / TEXT. Numbers, dates, uuids, booleans, and
     # unresolved pg DOMAINs are skipped.
     if not isinstance(col_type, String):
-        return ()
+        return (), False
 
     qt = _quote_ident(engine, qualified_table)
     qc = _quote_ident(engine, col_name)
-    # DISTINCT + LIMIT max_distinct+1: if we get more than max_distinct rows back
-    # the column is high-cardinality (a name, a description) and the samples would
-    # be noise, so we drop them. The +1 tells "exactly at the cap" from "over it".
+    # DISTINCT + LIMIT enumerate_max+1: more than enumerate_max rows back and the
+    # column is high-cardinality (a name, a description) — keep nothing. The +1
+    # tells "exactly at the cap" from "over it".
     stmt = text(f"SELECT DISTINCT {qc} AS v FROM {qt} WHERE {qc} IS NOT NULL LIMIT :lim")
     try:
-        rows = conn.execute(stmt, {"lim": max_distinct + 1}).fetchall()
+        rows = conn.execute(stmt, {"lim": enumerate_max + 1}).fetchall()
     except Exception:
         logger.warning("value sampling failed for %s.%s", qualified_table, col_name, exc_info=True)
-        return ()
+        return (), False
 
-    if len(rows) > max_distinct:
-        return ()
+    if len(rows) > enumerate_max:
+        return (), False
 
     values = [str(r.v).strip() for r in rows]
     values = [v for v in values if v]  # drop empty / whitespace-only
     # One long value means the column holds free text, not labels — drop it whole
     # rather than keep a truncated-looking subset.
     if not values or any(len(v) > _MAX_VALUE_LEN for v in values):
-        return ()
+        return (), False
     # value-level PII backstop — never log the value, only the column it was in
     if any(p.search(v) for v in values for p in _SENSITIVE_VALUE_PATTERNS):
         logger.info("skipped sampling %s.%s — a value matched a sensitive pattern", qualified_table, col_name)
-        return ()
+        return (), False
     # dedupe after stripping ('S ' and 'S' collapse), preserve encounter order
-    return tuple(list(dict.fromkeys(values))[:size])
+    return _fit_budget(list(dict.fromkeys(values)), size)
+
+
+def _fit_budget(values: list[str], size: int) -> tuple[tuple[str, ...], bool]:
+    """The whole set if it renders within _MAX_ENUM_CHARS (complete=True); otherwise
+    the first `size` values as plain examples (complete=False)."""
+    if not values:
+        return (), False
+    if len(", ".join(values)) <= _MAX_ENUM_CHARS:
+        return tuple(values), True
+    return tuple(values[:size]), False
 
 
 def _quote_ident(engine: Engine, dotted: str) -> str:

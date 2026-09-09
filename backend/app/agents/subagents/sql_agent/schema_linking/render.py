@@ -25,7 +25,14 @@ def _q(name: str) -> str:
 
 def _column_line(col: models.Column) -> str:
     pk = " PK" if col.pk else ""
-    hint = f"  -- e.g. {', '.join(col.sample_values)}" if col.sample_values else ""
+    if col.sample_values and col.values_complete:
+        # the whole domain — the generator can filter with `=` on the exact literal
+        hint = f"  -- all values: {', '.join(col.sample_values)}"
+    elif col.sample_values:
+        # examples only — the generator must match with ILIKE, not `=`
+        hint = f"  -- e.g. {', '.join(col.sample_values)}"
+    else:
+        hint = ""
     return f"  - {_q(col.name)} ({col.type}){pk}{hint}"
 
 

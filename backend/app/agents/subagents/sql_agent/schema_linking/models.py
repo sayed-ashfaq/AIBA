@@ -35,6 +35,11 @@ class Column:
     # rather than None so callers can iterate with no guard; tuple rather than
     # list so a frozen Column stays fully immutable and hashable.
     sample_values: tuple[str, ...] = ()
+    # True  -> sample_values is the column's COMPLETE distinct set: the generator
+    #          can filter with `=` on the exact literal shown.
+    # False -> sample_values is examples only (or empty): the generator must not
+    #          assume the user's wording matches one of them — use ILIKE.
+    values_complete: bool = False
 
 @dataclass(frozen=True)
 class FKEdge:

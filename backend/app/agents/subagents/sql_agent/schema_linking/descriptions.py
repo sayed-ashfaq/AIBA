@@ -39,8 +39,10 @@ def _table_summary(table: models.Table) -> str:
     """Compact one-line brief handed to the model for a single table."""
     cols = ", ".join(c.name for c in table.columns)
     refs = ", ".join(sorted({fk.to_table for fk in table.foreign_keys}))
+    # a flavour of the values is enough to write a one-liner — a fully enumerated
+    # column can carry ~30 of them, which this prompt doesn't need
     samples = "; ".join(
-        f"{c.name}=[{', '.join(c.sample_values)}]" for c in table.columns if c.sample_values
+        f"{c.name}=[{', '.join(c.sample_values[:5])}]" for c in table.columns if c.sample_values
     )
     parts = [f"{table.name} | columns: {cols}"]
     if refs:
