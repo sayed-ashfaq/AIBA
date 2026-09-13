@@ -19,6 +19,7 @@ from __future__ import annotations
 
 import datetime as _dt
 import math
+import re
 from dataclasses import dataclass, field
 from decimal import Decimal
 from itertools import permutations
@@ -98,6 +99,25 @@ def _round_tol(na: float, nb: float) -> float | None:
     return 0.5 * 10 ** -min(ks) if ks else None
 
 
+_DATE_PREFIX_RE = re.compile(r"^\d{4}-\d{2}(-\d{2})?")
+
+
+def _date_prefix_equal(a: Any, b: Any) -> bool:
+    """'2007-02' (TO_CHAR(..., 'YYYY-MM')) and '2007-02-01T00:00:00' (DATE_TRUNC('month', ...))
+    name the same month — a common shape mismatch between a truncated date label and a full ISO
+    timestamp, not a real data difference. Deliberately narrow: both sides must independently
+    look like a YYYY-MM or YYYY-MM-DD date before the prefix check applies, and the shorter side
+    must end exactly at a month or day boundary — a bare "is one a prefix of the other" rule
+    would wrongly equate two distinct category codes ('PG' is a prefix of 'PG-13').
+    """
+    if not (isinstance(a, str) and isinstance(b, str)):
+        return False
+    if not (_DATE_PREFIX_RE.match(a) and _DATE_PREFIX_RE.match(b)):
+        return False
+    shorter, longer = sorted((a, b), key=len)
+    return len(shorter) in (7, 10) and longer.startswith(shorter)
+
+
 def _cells_equal(a: Any, b: Any, tol: float) -> bool:
     a, b = normalize_cell(a), normalize_cell(b)
     if a is None or b is None:
@@ -111,7 +131,7 @@ def _cells_equal(a: Any, b: Any, tol: float) -> bool:
         if rt is not None:
             tol_eff = max(tol_eff, rt)
         return abs(na - nb) <= tol_eff
-    return a == b or str(a) == str(b)
+    return a == b or str(a) == str(b) or _date_prefix_equal(a, b)
 
 
 def _rows_equal(r1: Sequence, r2: Sequence, tol: float) -> bool:
@@ -219,11 +239,20 @@ def _col_signature(rows: list, idx: int, tol: float) -> tuple:
 
 
 def _subset_match(
-    small_rows: list, big_rows: list, n_small: int, n_big: int, *, ordered: bool, tol: float
+    small_rows: list, big_rows: list, n_small: int, n_big: int, *, tol: float
 ) -> tuple[int, ...] | None:
     """Is there an ordered selection of ``n_small`` columns from the ``n_big``-wide result
     whose projection equals ``small_rows``? Returns the selection (indices into the wide
     result) or None. Lets the agent carry extra columns, or project fewer.
+
+    Always compares the projection unordered, regardless of the gold query's own ORDER BY.
+    column_match="subset" is already the tolerant mode (agent may add/omit columns) — a per-row
+    rank or a "spend descending" list very often has ties (two customers at $0.00, two films
+    tied for longest), and gold vs. agent breaking a tie in a different arbitrary order is not a
+    wrong answer. Enforcing exact position on top of already-tolerant column matching only
+    produced false mismatches (verified against real dvdrental runs — same values, tie order
+    differed) without ever catching a genuine bug: a truly wrong row set already fails on
+    row count or on the per-row value comparison itself.
     """
     if n_big > _MAX_SUBSET_BIG_COLS or math.perm(n_big, n_small) > _MAX_SUBSET_TRIES:
         # fall back to matching each narrow column to the one big column with the same
@@ -239,11 +268,11 @@ def _subset_match(
             sel.append(hit)
         cand = tuple(sel)
         projected = [tuple(r[i] for i in cand) for r in big_rows]
-        return cand if _compare_rows(small_rows, projected, ordered=ordered, tol=tol).equal else None
+        return cand if _compare_rows(small_rows, projected, ordered=False, tol=tol).equal else None
 
     for sel in permutations(range(n_big), n_small):
         projected = [tuple(r[i] for i in sel) for r in big_rows]
-        if _compare_rows(small_rows, projected, ordered=ordered, tol=tol).equal:
+        if _compare_rows(small_rows, projected, ordered=False, tol=tol).equal:
             return sel
     return None
 
@@ -366,7 +395,7 @@ def compare_results(
 
     # try to locate the narrower column set inside the wider one, by value
     if len(a_cols) >= len(g_cols):
-        sel = _subset_match(g_rows, a_rows, len(g_cols), len(a_cols), ordered=ordered, tol=float_tol)
+        sel = _subset_match(g_rows, a_rows, len(g_cols), len(a_cols), tol=float_tol)
         if sel is not None:
             extra = [c for i, c in enumerate(a_cols) if i not in sel]
             note = f" agent also returned {extra}" if extra else ""
@@ -378,7 +407,7 @@ def compare_results(
                 column_perm=list(sel),
             )
     if len(g_cols) >= len(a_cols):
-        sel = _subset_match(a_rows, g_rows, len(a_cols), len(g_cols), ordered=ordered, tol=float_tol)
+        sel = _subset_match(a_rows, g_rows, len(a_cols), len(g_cols), tol=float_tol)
         if sel is not None:
             dropped = [c for i, c in enumerate(g_cols) if i not in sel]
             return Comparison(
@@ -509,5 +538,40 @@ if __name__ == "__main__":
             ordered=False,
         ),
         "gold merged the name; agent split it",
+    )
+    ok(
+        compare_results((["month"], [("2007-02-01T00:00:00",)]), (["month"], [("2007-02",)]), ordered=False),
+        "month label vs. truncated-timestamp for the same month",
+    )
+    ok(
+        compare_results((["d"], [("2024-01-15T00:00:00",)]), (["d"], [("2024-01-15",)]), ordered=False),
+        "day label vs. full timestamp for the same day",
+    )
+    no(
+        compare_results((["rating"], [("PG",)]), (["rating"], [("PG-13",)]), ordered=False),
+        "date-prefix leniency must never bleed into unrelated category codes",
+    )
+    no(
+        compare_results((["month"], [("2007-02-01T00:00:00",)]), (["month"], [("2007-03",)]), ordered=False),
+        "different months must still mismatch",
+    )
+    ok(
+        compare_results(
+            (["customer_id", "first_name", "last_name", "total_spent", "spend_rank"],
+             [(1, "Mary", "Smith", 114.7, 169), (2, "Patricia", "Johnson", 123.74, 109)]),
+            (["customer_id", "total_spent", "rank"], [(2, 123.74, 109), (1, 114.7, 169)]),
+            ordered=True,  # gold query has an ORDER BY — real dvdrental case had many tied ranks
+            column_match="subset",
+        ),
+        "subset match ignores row order — ties in a ranked result must not read as wrong",
+    )
+    no(
+        compare_results(
+            (["customer_id", "total_spent"], [(1, 114.7), (2, 123.74)]),
+            (["customer_id", "total_spent"], [(1, 999.0), (2, 123.74)]),
+            ordered=True,
+            column_match="subset",
+        ),
+        "subset match still catches a genuinely wrong value, order aside",
     )
     print("\nall self-tests passed")
