@@ -85,6 +85,14 @@ class SchemaGraph:
     # a fixed list there is no way to map a similarity score back to a table.
     table_names: list[str] = field(default_factory=list)
     embeddings: np.ndarray | None = None  # shape (len(table_names), dim); filled by builder.py
+    # Column-level counterpart to the two fields above: row i of `column_embeddings`
+    # describes column_index[i] = (table_name, column_name). A question can match a
+    # specific column directly (e.g. a value or a narrow term that never made it into
+    # the table's own embedding text) — the match is then resolved back to its owning
+    # table via this index, the same way a FalkorDB Column node resolves back to its
+    # Table via BELONGS_TO. Both filled by builder.py; empty list/None until then.
+    column_index: list[tuple[str, str]] = field(default_factory=list)
+    column_embeddings: np.ndarray | None = None  # shape (len(column_index), dim)
 
 
 @dataclass(frozen=True)

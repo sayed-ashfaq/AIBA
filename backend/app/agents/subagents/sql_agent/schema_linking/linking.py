@@ -6,6 +6,12 @@ Pipeline:
                                     is about, as short noun phrases.
     2. match_anchors(...)           embed each phrase, take the top-k closest
                                     tables -> anchor tables.
+    2b. match_columns(...)          same phrases, matched against column-level
+                                    embeddings instead — a column match surfaces
+                                    its OWNING table, the same way a match_anchors
+                                    hit does. Catches a table whose relevant column
+                                    never made it into that table's own (capped)
+                                    embedding text.
     3. graph.connecting_tables(...) FK traversal: the anchors plus the bridge
                                     tables that join them.
     4. graph.fk_neighbours(...)     optional 1-hop "sphere": directly FK-related
@@ -219,6 +225,78 @@ def question_anchors(
     return out
 
 
+def match_columns(
+    sg: models.SchemaGraph,
+    entities: list[str],
+    *,
+    top_k: int,
+    min_score: float,
+) -> list[str]:
+    """The column-level counterpart to match_anchors(): for each entity phrase, embed
+    it and walk its ranked matches against COLUMN embeddings rather than table
+    embeddings, surfacing the OWNING TABLE of every column that clears min_score (up
+    to top_k distinct tables per entity).
+
+    This is what lets a column-specific term or value pull in a table whose own
+    embedding_text() never mentioned it — builder._columns_for_embedding caps a
+    table's column list at 800 chars, so a wide table's later columns can simply be
+    truncated out of the table-level vector; every column gets its own vector here
+    regardless. Same idea as FalkorDB QueryWeaver's Column vector index resolved
+    back to its Table via BELONGS_TO — see dev-notes for the writeup.
+
+    No bridge-table filtering here (unlike match_anchors) — "is this table mostly a
+    join table" is a table-shaped question, not a column-shaped one; a bridge
+    table's own non-FK column is exactly the kind of narrow term this is meant to
+    catch.
+    """
+    if not entities or sg.column_embeddings is None or sg.column_embeddings.size == 0:
+        return []
+
+    tables: list[str] = []
+    for entity in entities:
+        qvec = embeddings.embed_query(entity)
+        kept = 0
+        # a few extra candidates over top_k: several of the nearest columns can
+        # belong to a table already kept, so scanning only top_k rows would often
+        # surface fewer than top_k distinct tables
+        for idx, score in embeddings.cosine_topk(qvec, sg.column_embeddings, k=top_k + 4):
+            if score < min_score:
+                break
+            table_name, col_name = sg.column_index[idx]
+            if table_name in tables:
+                continue
+            tables.append(table_name)
+            kept += 1
+            logger.info("anchor  %-42s <- %-24s (column %-20s %.3f)", table_name, entity, col_name, score)
+            if kept >= top_k:
+                break
+
+    return tables
+
+
+def question_columns(
+    sg: models.SchemaGraph, question: str, *, top_k: int, min_score: float
+) -> list[str]:
+    """Column-level counterpart to question_anchors(): owning tables of the columns
+    closest to the WHOLE question text — the recall backstop for match_columns the
+    same way question_anchors is the backstop for match_anchors."""
+    if sg.column_embeddings is None or sg.column_embeddings.size == 0 or not question.strip():
+        return []
+    qvec = embeddings.embed_query(question)
+    out: list[str] = []
+    for idx, score in embeddings.cosine_topk(qvec, sg.column_embeddings, k=top_k + 4):
+        if score < min_score:
+            break
+        table_name, col_name = sg.column_index[idx]
+        if table_name in out:
+            continue
+        out.append(table_name)
+        logger.info("anchor  %-42s <- %-24s (column %-20s %.3f)", table_name, "[question]", col_name, score)
+        if len(out) >= top_k:
+            break
+    return out
+
+
 def _link_once(
     question: str,
     sg: models.SchemaGraph,
@@ -236,7 +314,15 @@ def _link_once(
     anchors = match_anchors(sg, entities, top_k=top_k, min_score=min_score)
     anchors = list(
         dict.fromkeys(
-            [*anchors, *question_anchors(sg, question, top_k=question_top_k, min_score=question_min_score)]
+            [
+                *anchors,
+                *question_anchors(sg, question, top_k=question_top_k, min_score=question_min_score),
+                # column-level passes, same thresholds as the table-level ones above —
+                # they ride the same retry ladder link() already runs (strict, then
+                # relaxed, then broadened entities) with no separate tuning surface.
+                *match_columns(sg, entities, top_k=top_k, min_score=min_score),
+                *question_columns(sg, question, top_k=question_top_k, min_score=question_min_score),
+            ]
         )
     )
     if not anchors:
