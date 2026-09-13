@@ -61,19 +61,30 @@ SAMPLE_ROWS = 10
 _MIN_SCHEMA_CONTEXT = 120
 
 # EXPERIMENT: the full-flat-schema fallback is disabled. In graph mode get_schema now returns ONLY
-# the linker's slice; if the linker errors or matches nothing the agent is told to re-ask with a
-# sharper task instead of being handed the whole schema. Restore the `return db_context.schema_text`
-# lines in resolve_schema (and the reassignment in sql_generator, and schema_text in _fix_sql) to
-# undo.
-_NO_SLICE = (
-    "Schema linking selected no tables for this task. Re-call get_schema with a more specific "
-    "description — name the metric and the dimensions you need (e.g. 'revenue by month from payments')."
-)
+# the linker's slice; schema_linking.link() itself already retries twice with looser matching
+# before giving up (see linking.py), so a slice-less result here means both those retries also
+# failed. Rather than hand back nothing (which, on dvdrental, produced two answers confidently
+# claiming a table didn't exist when it did), fall back to a bare table-name list — enough for the
+# agent to see what's actually in the database and re-ask by name, without the token cost of full
+# column detail. Restore the `return db_context.schema_text` lines (and the reassignment in
+# sql_generator, and schema_text in _fix_sql) to bring back the full-flat-schema fallback instead.
+def _names_only_schema(schema_graph) -> str:
+    names = ", ".join(sorted(schema_graph.tables))
+    return (
+        "Schema linking found no confident table match for this task, even after retrying with "
+        "looser matching. These are ALL the tables that exist in this database (names only, no "
+        f"columns): {names}\n\n"
+        "Pick the table(s) that actually hold this data and re-call get_schema naming them "
+        "directly (e.g. 'customer table: which column holds their segment/tier') so their full "
+        "column list can be resolved. Do not tell the user this data doesn't exist without first "
+        "checking this list."
+    )
 
 
 def resolve_schema(db_context, task: str) -> str:
     """The schema text for a task. Plain mode: the full flat schema. Graph mode: schema_linking's
-    question-relevant slice ONLY — no full-schema fallback (see _NO_SLICE note above)."""
+    question-relevant slice, or — only once link()'s own retries are exhausted too — a bare table
+    name list (see _names_only_schema note above)."""
     if getattr(db_context, "schema_mode", "plain") != "graph" or db_context.schema_graph is None:
         return db_context.schema_text
 
@@ -83,8 +94,8 @@ def resolve_schema(db_context, task: str) -> str:
         focused = schema_linking.link(task, db_context.schema_graph)
         sliced = schema_linking.render_focused(focused, db_context.schema_graph)
     except Exception:
-        logger.warning("graph schema linking errored for %r — returning no slice", task, exc_info=True)
-        return _NO_SLICE
+        logger.warning("graph schema linking errored for %r — falling back to table names", task, exc_info=True)
+        return _names_only_schema(db_context.schema_graph)
 
     if sliced:
         logger.info(
@@ -92,8 +103,8 @@ def resolve_schema(db_context, task: str) -> str:
             len(focused.path_tables), task, len(db_context.schema_graph.tables),
         )
         return sliced
-    logger.info("graph schema: linking found nothing for %r — returning no slice", task)
-    return _NO_SLICE
+    logger.info("graph schema: linking found nothing for %r — falling back to table names", task)
+    return _names_only_schema(db_context.schema_graph)
 
 
 @tool

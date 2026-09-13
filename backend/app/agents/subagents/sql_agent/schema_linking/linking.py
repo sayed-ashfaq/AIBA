@@ -13,8 +13,13 @@ Pipeline:
     5. FocusedSchema(...)           anchors + path tables + join conditions
                                     (graph.edges_within).
 
-If nothing matches — a question the schema cannot answer — this returns an
-*empty* FocusedSchema. Whether to then fall back to the full flat schema is the
+A miss on the first pass gets two deterministic retries with progressively looser matching
+(see link()) before giving up — a wrong phrasing is far more common than a genuinely
+unanswerable question, and asking the ReAct agent to notice an empty slice and retry itself
+proved unreliable in practice.
+
+If nothing matches even after retrying — a question the schema genuinely cannot answer — this
+returns an *empty* FocusedSchema. Whether to then fall back to the full flat schema is the
 caller's decision, not this module's.
 
 Depends on embeddings + graph + models + the LLM. No database access.
@@ -46,6 +51,14 @@ _HUB_DEGREE = 8             # an anchor with this many FK edges is a hub; don't 
 DEFAULT_QUESTION_TOP_K = 2
 DEFAULT_QUESTION_MIN_SCORE = 0.25   # a full sentence dilutes cosine — a lower floor than the phrase pass
 
+# Retry pass, only when the first (strict) pass matches nothing. Loosened enough to catch a real
+# near-miss, not loosened so far that an unrelated table gets waved in — this still requires *some*
+# cosine similarity, just less of it, and connecting_tables still has to find a real FK path.
+RETRY_MIN_SCORE = 0.18
+RETRY_TOP_K = 3
+RETRY_QUESTION_TOP_K = 3
+RETRY_QUESTION_MIN_SCORE = 0.15
+
 _MAX_ENTITIES = 5
 
 _ENTITY_PROMPT = """Extract the database entities this question is about — the \
@@ -58,6 +71,22 @@ nothing else. For "average order value per supplier last month" reply exactly:
 customer orders, suppliers
 
 Never include "average", "last month", counts, or sums."""
+
+# Second-chance extraction, used only when the strict AND relaxed passes both matched nothing. A
+# compound phrase ("customer segments", "at-risk customers") embeds further from a table's name
+# than the bare noun inside it does — this asks for that bare noun instead, dropping every
+# qualifier, so the retry has the plainest possible term to match against.
+_BROAD_ENTITY_PROMPT = """Extract the database entities this question is about, but reduce each \
+one to the SIMPLEST, most generic noun a database table would actually be named after — drop any \
+qualifier, adjective, or business label in front of it.
+
+"customer segments" -> customers
+"at-risk customers" -> customers
+"expensive movies" -> movies
+"underperforming products" -> products
+"most valuable clients" -> clients
+
+Reply with 1 to 5 bare nouns (singular or plural), comma-separated, on a single line, nothing else."""
 
 
 def _parse_entities(text: str) -> list[str]:
@@ -89,25 +118,28 @@ def _parse_entities(text: str) -> list[str]:
     return out
 
 
-def extract_entities(question: str) -> list[str]:
+def extract_entities(question: str, *, broad: bool = False) -> list[str]:
     """LLM: question -> up to 5 short noun phrases naming the entities involved.
+
+    `broad=True` swaps in _BROAD_ENTITY_PROMPT, which asks for the bare noun inside each
+    phrase instead of the phrase itself — the link() retry's last resort when the normal
+    phrasing didn't match anything.
 
     Plain text, not structured output: gpt-oss on Groq intermittently answers a
     forced tool call with bare content ("model did not call a tool" -> 400). Any
     LLM or parse failure returns [] — the caller then falls back to the full
     schema, which is always the safe default here.
     """
+    prompt = _BROAD_ENTITY_PROMPT if broad else _ENTITY_PROMPT
     try:
         llm = get_llm("main_agent")
-        with log_duration("Extract entities"):
-            reply = llm.invoke(
-                [SystemMessage(content=_ENTITY_PROMPT), HumanMessage(content=question)]
-            )
+        with log_duration("Extract entities" + (" (broad)" if broad else "")):
+            reply = llm.invoke([SystemMessage(content=prompt), HumanMessage(content=question)])
         entities = _parse_entities(reply.content)[:_MAX_ENTITIES]
     except Exception:
         logger.warning("entity extraction failed for %r — no anchors", question, exc_info=True)
         return []
-    logger.info("entities: %s", entities)
+    logger.info("entities%s: %s", " (broad)" if broad else "", entities)
     return entities
 
 
@@ -187,25 +219,20 @@ def question_anchors(
     return out
 
 
-def link(
+def _link_once(
     question: str,
     sg: models.SchemaGraph,
+    entities: list[str],
     *,
-    entities: list[str] | None = None,
-    top_k: int = DEFAULT_TOP_K,
-    min_score: float = DEFAULT_MIN_SCORE,
-    neighbour_hops: int = DEFAULT_NEIGHBOUR_HOPS,
-    question_top_k: int = DEFAULT_QUESTION_TOP_K,
-    question_min_score: float = DEFAULT_QUESTION_MIN_SCORE,
+    top_k: int,
+    min_score: float,
+    neighbour_hops: int,
+    question_top_k: int,
+    question_min_score: float,
 ) -> models.FocusedSchema:
-    """Run the full pipeline. Empty FocusedSchema when no anchor matches.
-
-    Pass `entities` to skip the LLM extraction call — the extraction is the only
-    non-deterministic step, so the eval harness (and any caller re-running link)
-    injects a fixed list.
-    """
-    if entities is None:
-        entities = extract_entities(question)
+    """One pass of anchor-matching + graph traversal for a fixed entity list and thresholds.
+    Empty FocusedSchema when no anchor matches at these thresholds — link() decides whether
+    that's worth retrying looser."""
     anchors = match_anchors(sg, entities, top_k=top_k, min_score=min_score)
     anchors = list(
         dict.fromkeys(
@@ -213,7 +240,6 @@ def link(
         )
     )
     if not anchors:
-        logger.info("no anchors matched for %r — returning empty FocusedSchema", question)
         return models.FocusedSchema(question=question, anchor_tables=[], path_tables=[], edges=[])
 
     path = graph.connecting_tables(sg.graph, anchors)
@@ -237,3 +263,82 @@ def link(
     return models.FocusedSchema(
         question=question, anchor_tables=anchors, path_tables=path, edges=edges
     )
+
+
+def link(
+    question: str,
+    sg: models.SchemaGraph,
+    *,
+    entities: list[str] | None = None,
+    top_k: int = DEFAULT_TOP_K,
+    min_score: float = DEFAULT_MIN_SCORE,
+    neighbour_hops: int = DEFAULT_NEIGHBOUR_HOPS,
+    question_top_k: int = DEFAULT_QUESTION_TOP_K,
+    question_min_score: float = DEFAULT_QUESTION_MIN_SCORE,
+) -> models.FocusedSchema:
+    """Run the pipeline, retrying deterministically before giving up.
+
+    A miss at the strict thresholds isn't necessarily "the schema can't answer this" — it's
+    often "the phrasing didn't embed close enough". Rather than surface an empty slice and
+    hope the ReAct model notices and re-asks (it often doesn't — see the two dvdrental L4
+    questions where the agent flatly claimed a table didn't exist instead of retrying), retry
+    twice here, deterministically, before this returns empty:
+
+      1. same entities, loosened score/top-k thresholds (RETRY_*) — catches a genuine
+         near-miss cheaply, no extra LLM call.
+      2. only if that's still empty: one more extract_entities call asking for the bare noun
+         inside each phrase ("customer segments" -> "customers") — a compound phrase embeds
+         further from a table name than the noun alone does.
+
+    Deliberately NOT looser than this: connecting_tables still has to find a real FK path, so
+    a wrong table pulled in by an overly relaxed floor would need a join to something relevant
+    to survive — but the floor is still the guard against waving in an unrelated table, so it's
+    nudged down, never removed.
+
+    Pass `entities` to skip the LLM extraction call and the retries — the eval harness (and any
+    caller re-running link with a fixed entity list) wants exactly the given anchors, not a
+    second-guessing pass on top.
+
+    A blank/degenerate question (the ReAct agent calling get_schema with task="" mid-thrash —
+    seen in practice) skips straight to empty: retrying different thresholds or phrasings on
+    nothing to phrase is two wasted LLM calls that only add latency and Groq rate-limit exposure
+    for a result that was never going to change.
+    """
+    if not question or not question.strip():
+        logger.info("link() called with a blank question — skipping retries, empty FocusedSchema")
+        return models.FocusedSchema(question=question, anchor_tables=[], path_tables=[], edges=[])
+
+    skip_retry = entities is not None
+    if entities is None:
+        entities = extract_entities(question)
+
+    focused = _link_once(
+        question, sg, entities,
+        top_k=top_k, min_score=min_score, neighbour_hops=neighbour_hops,
+        question_top_k=question_top_k, question_min_score=question_min_score,
+    )
+    if focused.path_tables or skip_retry:
+        return focused
+
+    logger.info("no anchors for %r — retrying with relaxed thresholds", question)
+    focused = _link_once(
+        question, sg, entities,
+        top_k=RETRY_TOP_K, min_score=RETRY_MIN_SCORE, neighbour_hops=neighbour_hops,
+        question_top_k=RETRY_QUESTION_TOP_K, question_min_score=RETRY_QUESTION_MIN_SCORE,
+    )
+    if focused.path_tables:
+        return focused
+
+    logger.info("still no anchors for %r — retrying with broadened entity extraction", question)
+    broad_entities = extract_entities(question, broad=True)
+    if broad_entities and broad_entities != entities:
+        focused = _link_once(
+            question, sg, broad_entities,
+            top_k=RETRY_TOP_K, min_score=RETRY_MIN_SCORE, neighbour_hops=neighbour_hops,
+            question_top_k=RETRY_QUESTION_TOP_K, question_min_score=RETRY_QUESTION_MIN_SCORE,
+        )
+        if focused.path_tables:
+            return focused
+
+    logger.info("linking exhausted all passes for %r — returning empty FocusedSchema", question)
+    return models.FocusedSchema(question=question, anchor_tables=[], path_tables=[], edges=[])
