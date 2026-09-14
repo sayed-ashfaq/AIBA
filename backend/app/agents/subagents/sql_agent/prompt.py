@@ -20,15 +20,20 @@ thing, copied exactly. Do not summarise it, shorten it, or replace it with a tab
 carries the exact column names and types sql_generator needs, and it writes blind without them. \
 Give it a clear task description too: for anything beyond a single-table lookup, write the task \
 as explicit steps — which tables, how they join, what to filter, what to aggregate.
-3. Call execute_sql with whatever sql_generator returns, and pass the same task text you gave \
-sql_generator — execute_sql uses it to auto-repair a query that errors.
-4. execute_sql fixes mechanical SQL errors itself (a bad identifier, a missing cast, a GROUP BY \
+3. sql_generator sometimes replies in plain text instead of SQL — it does this deliberately when \
+a text filter names a value that isn't in a column's known complete list. That reply IS the \
+answer: do not call execute_sql with it, and do not call sql_generator again hoping for different \
+SQL — that value genuinely isn't a thing here. Report it to the orchestrator plainly, the same \
+way you would a 0-row result.
+4. Otherwise, call execute_sql with whatever sql_generator returns, and pass the same task text \
+you gave sql_generator — execute_sql uses it to auto-repair a query that errors.
+5. execute_sql fixes mechanical SQL errors itself (a bad identifier, a missing cast, a GROUP BY \
 omission) before returning. If it STILL comes back with an error after that, the query is wrong \
 in a way that needs rethinking, not patching — call sql_generator again with the exact error \
 folded into the task ("previous attempt failed because: ..."), then execute_sql again. Never \
 resend a query identical to one that already ran. Up to 3 such re-plans; if still erroring, stop \
 and report the error.
-5. A query that runs and returns 0 rows is a SUCCESS, not an error — it is the factual answer \
+6. A query that runs and returns 0 rows is a SUCCESS, not an error — it is the factual answer \
 that nothing matches. Do not retry it, do not loosen the filters and try again, do not go looking \
 for the data in other tables. Report "no matching records" and stop.
 
@@ -63,7 +68,11 @@ write a single {dialect} SELECT query that answers it.
 Rules:
 - Only ever write a single SELECT (or WITH ... SELECT) statement. Never write or modify data or \
 schema — no INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, EXEC.
-- Use only the tables and columns shown in the schema above — never invent one.
+- Use only the tables and columns shown in the schema above — never invent one, even a common \
+name for this kind of system (`users`, `orders`, `accounts`). If the exact column a term names \
+isn't there, pick the column that serves the same purpose instead — `replacement_cost` for \
+"budget" or "expensive", `SUM(payment.amount)` for "revenue" — rather than treating "no exact \
+name match" as a reason to give up.
 - Use {dialect}-specific syntax and functions — date/time handling, quoting, LIMIT/OFFSET and \
 similar differ between Postgres and MySQL, so write for {dialect} specifically.
 - Match identifier case to the schema. Postgres folds an unquoted name to lower case, so any \
@@ -81,6 +90,13 @@ the distinctive part of what they said, not their whole phrase — Postgres \
 `WHERE col ILIKE '%t5%'`, MySQL `WHERE LOWER(col) LIKE '%t5%'`.
   - When in doubt, prefer ILIKE over `=`. Only use `=` on a user-named text value when it \
 appears verbatim in an `-- all values:` list or the question is clearly quoting an exact code.
+  - If the hint IS `-- all values: ...` (the column's COMPLETE set) and NONE of those listed \
+values correspond — even loosely — to what the user named, do not fall back to ILIKE and do not \
+filter on a value that isn't in that list. A filter on an invented or mismatched literal just \
+returns zero rows, which looks identical to "a real category with nothing in it right now" — but \
+it means something different (the term itself isn't a thing here) and reporting it as "no \
+matching records" would be misleading. Instead, reply in plain text (no SQL) that this value is \
+not one of the column's known values, and list what the actual values are.
 - Prefer explicit column names over SELECT *.
 - Do NOT add a LIMIT clause of your own. The system caps result size on its own, and a LIMIT you \
 write throws away rows that are needed further down. The one exception is when the question asks \
@@ -105,7 +121,9 @@ not RANK — RANK returns more than N rows whenever the metric ties. Any `ORDER 
 needs a unique column last in the ORDER BY so the cut is deterministic.
 - Use index friendly syntax for dates. For example: "WHERE journey_start_dtm >= CURRENT_DATE
   AND journey_start_dtm < CURRENT_DATE + INTERVAL '1 DAY';
-- Return ONLY the SQL, inside a single ```sql fenced code block. No commentary before or after."""
+- When you do write a query, return ONLY the SQL, inside a single ```sql fenced code block — no \
+commentary before or after. The one exception is the no-matching-value case above: reply in \
+plain text then, with no fenced block at all."""
 
 
 ## ----------------- FIX SQL PROMPT ------------------------------------#

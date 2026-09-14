@@ -24,6 +24,8 @@ Thin wrappers over db.py/sql.py — the destructive-write guard and row cap alre
 are reused unchanged.
 """
 
+import re
+
 import sqlglot
 from langchain.tools import ToolRuntime
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -59,6 +61,9 @@ SAMPLE_ROWS = 10
 # a real schema is columns + types + FK lines; a schema_context shorter than this is a stub — the
 # agent passed a table name or a paraphrase instead of the get_schema output.
 _MIN_SCHEMA_CONTEXT = 120
+
+# presence of either marks a sql_generator reply as actual SQL rather than a plain-text refusal
+_SQL_KEYWORD_RE = re.compile(r"\b(select|with)\b", re.IGNORECASE)
 
 # EXPERIMENT: the full-flat-schema fallback is disabled. In graph mode get_schema now returns ONLY
 # the linker's slice; schema_linking.link() itself already retries twice with looser matching
@@ -131,8 +136,11 @@ def sql_generator(schema_context: str, task: str, runtime: ToolRuntime) -> str:
     rather than restating the raw request — the more explicit the task, the more reliable the SQL.
     When retrying after a failed attempt, include the previous error in the task so it isn't repeated.
 
-    Returns cleaned, dialect-correct SQL ready for execute_sql, or a validation error to fix and
-    retry with. Does not run the query — call execute_sql with the result to do that.
+    Returns cleaned, dialect-correct SQL ready for execute_sql; a validation error to fix and
+    retry with; or — per SQL_GENERATION_PROMPT — a plain-text refusal when a text filter names a
+    value that isn't in a column's complete `-- all values:` list. That refusal is the final
+    answer, not a bug to patch: don't re-call sql_generator hoping for different SQL, and don't
+    call execute_sql with it. Does not run the query — call execute_sql with the result to do that.
     """
     db_context = runtime.context.db_context
     if db_context is None:
@@ -148,9 +156,17 @@ def sql_generator(schema_context: str, task: str, runtime: ToolRuntime) -> str:
     system_prompt = SQL_GENERATION_PROMPT.format(dialect=db_context.db_type)
     content = f"Schema:\n{schema_context}\n\nTask:\n{task}"
     response = get_llm("sql_agent").invoke([SystemMessage(content=system_prompt), HumanMessage(content=content)])
+    reply = (response.content or "").strip()
+
+    # A deliberate "no such value" refusal has no fenced SQL block and no SELECT/WITH keyword.
+    # Hand it back verbatim — running it through clean_sql would try to parse it as SQL, fail, and
+    # replace the model's actual explanation with a generic "Generation error", which defeats the
+    # whole point of asking it to explain instead of silently filtering on an invented value.
+    if "```" not in reply and not _SQL_KEYWORD_RE.search(reply):
+        return reply
 
     try:
-        return sql_lib.clean_sql(response.content, db_context.db_type)
+        return sql_lib.clean_sql(reply, db_context.db_type)
     except NL2SQLError as exc:
         logger.info("sql_generator produced invalid SQL: %s", exc)
         return f"Generation error: {exc}"
