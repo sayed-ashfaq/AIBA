@@ -296,6 +296,9 @@ def execute_sql(sql: str, runtime: ToolRuntime, task: str = "") -> str:
         f"{result.row_count} row(s) returned"
         + (" (capped — more rows exist)" if result.truncated else "")
         + f". Columns: {', '.join(result.columns)}.",
+        # kept even when the result is small: the orchestrator still needs this path to hand the
+        # result to python_agent or visualizer, it just must not repeat it to the end user (see
+        # ORCHESTRATOR_INSTRUCTIONS) — there's nothing behind it worth reading themselves
         f"Full result set written to {path}.",
         f"All {len(sample)} row(s):"
         if is_full
