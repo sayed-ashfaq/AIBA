@@ -51,6 +51,15 @@ export function CopyIcon() {
   );
 }
 
+export function TableIcon() {
+  return (
+    <svg width="13" height="13" viewBox="0 0 14 14" fill="none">
+      <rect x="1.5" y="2.5" width="11" height="9" rx="1.3" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M1.5 5.8H12.5M5.2 2.5V11.5" stroke="currentColor" strokeWidth="1.2" />
+    </svg>
+  );
+}
+
 export function PlusIcon() {
   return (
     <svg width="14" height="14" viewBox="0 0 14 14" fill="none">

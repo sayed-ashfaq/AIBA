@@ -13,12 +13,12 @@ const VISIBLE_ROWS = 200;
  * without relying on hue at all. It also covers the cases a chart can't — a result with no
  * measure, or one the visualizer declined to plot.
  */
-export default function DataTable({ columns, rows }) {
-  const visible = rows.slice(0, VISIBLE_ROWS);
+export default function DataTable({ columns, rows, limit = VISIBLE_ROWS, maxHeight }) {
+  const visible = rows.slice(0, limit);
 
   return (
     <div className={styles.wrapper}>
-      <div className={styles.scroll}>
+      <div className={styles.scroll} style={maxHeight ? { maxHeight } : undefined}>
         <table className={styles.table}>
           <thead>
             <tr>
@@ -43,9 +43,9 @@ export default function DataTable({ columns, rows }) {
         </table>
       </div>
 
-      {rows.length > VISIBLE_ROWS && (
+      {rows.length > limit && (
         <p className={styles.note}>
-          Showing {VISIBLE_ROWS.toLocaleString()} of {rows.length.toLocaleString()} rows.
+          Showing {limit.toLocaleString()} of {rows.length.toLocaleString()} rows.
         </p>
       )}
     </div>

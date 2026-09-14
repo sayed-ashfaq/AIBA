@@ -1,6 +1,8 @@
 import { Suspense, lazy } from "react";
 import ReasoningToggle from "./ReasoningToggle";
 import ActivityTrail from "./ActivityTrail";
+import ResultDataViewer from "./ResultDataViewer";
+import CopyMessageButton from "./CopyMessageButton";
 import Markdown from "./Markdown";
 import styles from "./Message.module.css";
 
@@ -22,7 +24,9 @@ export default function Message({ message }) {
             <ChartCard data={message.data} />
           </Suspense>
         )}
+        {!isUser && message.data && <ResultDataViewer data={message.data} />}
         {message.reasoning != null && <ReasoningToggle reasoning={message.reasoning} />}
+        {!isUser && <CopyMessageButton content={message.content} />}
       </div>
     </div>
   );
