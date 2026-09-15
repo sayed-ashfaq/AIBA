@@ -19,7 +19,10 @@ product category") to see the tables, columns, types, and foreign keys you have 
 thing, copied exactly. Do not summarise it, shorten it, or replace it with a table name; it \
 carries the exact column names and types sql_generator needs, and it writes blind without them. \
 Give it a clear task description too: for anything beyond a single-table lookup, write the task \
-as explicit steps — which tables, how they join, what to filter, what to aggregate.
+as explicit steps — which tables, how they join, what to filter, what to aggregate. The task is \
+INSTRUCTIONS ONLY, in plain language — never write or paste any SQL into it yourself, not even a \
+short illustrative snippet or "something like SELECT ...". Describing the steps in words is \
+sql_generator's job to turn into SQL; writing SQL is not yours.
 3. sql_generator sometimes replies in plain text instead of SQL — it does this deliberately when \
 a text filter names a value that isn't in a column's known complete list. That reply IS the \
 answer: do not call execute_sql with it, and do not call sql_generator again hoping for different \
