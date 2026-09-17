@@ -94,6 +94,12 @@ def from_agent_files(files: dict) -> Optional[QueryData]:
     payload = _latest_result_payload(files)
     if payload is None:
         return None
+    if not isinstance(payload, dict) or not {"columns", "rows", "truncated"} <= payload.keys():
+        # a tool other than execute_sql (a model calling write_file directly on this path, e.g.)
+        # clobbered the result file with something that isn't the {columns, rows, truncated}
+        # shape — treat it the same as no result rather than crashing the turn on it.
+        logger.warning("result file wasn't in the expected {columns, rows, truncated} shape — ignoring it")
+        return None
 
     result = QueryResult(columns=payload["columns"], rows=payload["rows"], truncated=payload["truncated"])
     profile = profile_result(result)
