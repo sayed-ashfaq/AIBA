@@ -31,6 +31,11 @@ class Settings(BaseSettings):
     visualizer_model: str = "openai/gpt-oss-120b"
     verifier_model: str = "openai/gpt-oss-120b"
 
+    # optional per-agent override, e.g. "none" to force instruct mode on a model that defaults to
+    # thinking (qwen3.8-27b). None means "don't send reasoning_effort at all" — the model's own
+    # default — so this is a no-op for agents/models that don't need tuning.
+    sql_agent_reasoning_effort: Optional[str] = None
+
     # EXPERIMENTAL: "plain" hands the SQL agent the full flat schema (db.render_schema_text);
     # "graph" runs schema_linking to hand it only the question-relevant slice. This is now just the
     # fallback default — the live value is per-user (users.schema_mode), set via the UI toggle and
