@@ -135,10 +135,13 @@ def extract_entities(question: str, *, broad: bool = False) -> list[str]:
     forced tool call with bare content ("model did not call a tool" -> 400). Any
     LLM or parse failure returns [] — the caller then falls back to the full
     schema, which is always the safe default here.
+
+    temperature=0: this is a closed-set extraction task (name the nouns in the
+    question), not open-ended generation, so determinism matters more than variety.
     """
     prompt = _BROAD_ENTITY_PROMPT if broad else _ENTITY_PROMPT
     try:
-        llm = get_llm("main_agent")
+        llm = get_llm("main_agent", temperature=0)
         with log_duration("Extract entities" + (" (broad)" if broad else "")):
             reply = llm.invoke([SystemMessage(content=prompt), HumanMessage(content=question)])
         entities = _parse_entities(reply.content)[:_MAX_ENTITIES]
