@@ -2,7 +2,7 @@
 import allowlist (pandas, numpy, plus a few safe stdlib modules — no filesystem or network access
 beyond the input data it's given).
 
-Used by python_agent (run_python, tabular results) and visualizer (run_chart, rendered charts) —
+Used by analytics_agent (run_python, tabular results) and visualizer (run_chart, rendered charts) —
 same isolation mechanics, different runner script and allowlist, so the subprocess/timeout/resource
 plumbing is shared and only the two run_* entry points differ. This is process isolation plus a
 static allowlist, not a hardened sandbox against adversarial code — proportionate to where the code

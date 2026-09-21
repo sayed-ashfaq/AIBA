@@ -1,5 +1,5 @@
 """The single tool exposed to the visualizer subagent: render_chart, which loads one or more result
-files sql_agent/python_agent already wrote into pandas DataFrames, runs model-written
+files sql_agent/analytics_agent already wrote into pandas DataFrames, runs model-written
 matplotlib/seaborn code against them in shared.sandbox's resource-limited subprocess, and writes the
 rendered PNG as a new chart file — same virtual-filesystem convention execute_sql/run_data_code use
 for their own results.
@@ -26,7 +26,7 @@ logger = get_logger(__name__)
 def render_chart(
     code: str, title: str, caption: str, data_paths: Optional[list[str]] = None
 ) -> str:
-    """Run matplotlib/seaborn code against one or more result files sql_agent or python_agent
+    """Run matplotlib/seaborn code against one or more result files sql_agent or analytics_agent
     already wrote, and capture the chart it draws.
 
     Takes four arguments — `code`, `title`, `caption`, and `data_paths`. No other argument names

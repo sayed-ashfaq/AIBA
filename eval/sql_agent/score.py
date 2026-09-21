@@ -94,7 +94,7 @@ def main() -> int:
         log = r.get("log") or {}
 
         # SQL to score: prefer the /chat response's `sql`; fall back to the last execute_sql
-        # recovered from the log slice (the response carries no sql when python_agent or the
+        # recovered from the log slice (the response carries no sql when analytics_agent or the
         # visualizer produced the final turn). Re-parse the saved slice if the run predates
         # last_executed_sql being captured at run time.
         response_sql = (r.get("agent_sql") or "").strip()

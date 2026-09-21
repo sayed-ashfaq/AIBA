@@ -40,7 +40,7 @@ _GRAPH = re.compile(r"graph schema(?: linking)?: (?P<rest>.+)$")
 class LogSlice:
     sql_agent_invocations: int = 0  # orchestrator -> sql_agent delegations for this question
     redundant_sql_agent_calls: int = 0  # = max(0, sql_agent_invocations - 1)
-    other_delegations: dict = field(default_factory=dict)  # e.g. {"python_agent": 1}
+    other_delegations: dict = field(default_factory=dict)  # e.g. {"analytics_agent": 1}
     sql_generator_calls: int = 0
     execute_sql_calls: int = 0
     execute_sql_failures: int = 0
@@ -53,7 +53,7 @@ class LogSlice:
     task_descriptions: list = field(default_factory=list)
     # the SQL of the LAST execute_sql call in this slice, recovered from the indented body
     # the middleware logs. The scorer falls back to this when the /chat response carries no
-    # `sql` (e.g. python_agent/visualizer produced the final turn).
+    # `sql` (e.g. analytics_agent/visualizer produced the final turn).
     last_executed_sql: str | None = None
     executed_sql: list = field(default_factory=list)  # every execute_sql body, in order
 

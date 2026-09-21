@@ -5,7 +5,7 @@ on the log file to see what an agent actually did.
 
 Logging arguments in full is safe here specifically because of a convention every subagent's own
 prompt already enforces: nothing in this app calls a tool with row data as an argument — sql_agent,
-python_agent, and visualizer are all told never to hardcode a data value into SQL or code, so an
+analytics_agent, and visualizer are all told never to hardcode a data value into SQL or code, so an
 argument is always logic (a query, a snippet, a task description, a file path), never a result.
 Return values are the opposite — execute_sql's reply restates a sample of the actual rows — so this
 deliberately never logs one; nothing here needs to.

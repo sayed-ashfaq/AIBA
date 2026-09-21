@@ -18,7 +18,7 @@ CHARTS_DIR = "/charts"
 
 def write_result(columns: list[str], rows: list[dict], truncated: bool, sql: Optional[str] = None) -> str:
     """Write one result set to the virtual filesystem and return its path. Used by both sql_agent
-    (sql set) and python_agent (sql=None — a computed result has none).
+    (sql set) and analytics_agent (sql=None — a computed result has none).
 
     A fresh path per call, not a fixed one — a single turn can delegate more than once (e.g.
     "compare this month to last month"), and each result needs its own file.
@@ -39,7 +39,7 @@ def write_result(columns: list[str], rows: list[dict], truncated: bool, sql: Opt
 
 
 def read_result(path: str) -> dict:
-    """Read back a payload written by write_result — e.g. python_agent loading a result sql_agent
+    """Read back a payload written by write_result — e.g. analytics_agent loading a result sql_agent
     already fetched. Raises FileNotFoundError if nothing exists at the path (a typo, or a file from
     a different turn)."""
     result = StateBackend().read(path)

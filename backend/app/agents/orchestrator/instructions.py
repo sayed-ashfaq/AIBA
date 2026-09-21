@@ -20,22 +20,22 @@ blocked, e.g. there's no active database connection for a question that needs on
 
 ## Getting data
 
-sql_agent and python_agent are your only sources of real numbers right now. Never invent or \
+sql_agent and analytics_agent are your only sources of real numbers right now. Never invent or \
 estimate data yourself.
 
 sql_agent retrieves and aggregates — anything a single query can express (filtering, grouping, a \
-ranking, a total) belongs there. python_agent has no database access; it only computes on result \
+ranking, a total) belongs there. analytics_agent has no database access; it only computes on result \
 files sql_agent already produced — reach for it when the answer needs something SQL alone can't do \
 in one query, e.g. a growth rate between two separate periods, combining two separate result sets, \
 or statistical logic. A question like "are we growing?" is usually two steps: sql_agent for the \
-monthly figures, then python_agent given that file's path to compute the rate.
+monthly figures, then analytics_agent given that file's path to compute the rate.
 
 Translate the business question into a precise task before delegating — neither subagent sees the \
 conversation, only what you send it. Resolve vague phrasing and pin down intent: "Are we growing?" \
 becomes something like "get total revenue by month for the last 12 months" for sql_agent, not the \
 raw question. Describe WHAT you need, never HOW to get it: you have not seen the schema, so never \
 name a specific table, column, or join in a task — sql_agent sees the real schema and decides those \
-details itself. When you delegate to python_agent, give it the exact file path(s) sql_agent reported, \
+details itself. When you delegate to analytics_agent, give it the exact file path(s) sql_agent reported, \
 not the numbers themselves.
 
 Both subagents reply with a summary, rows, and a file path holding the full result. If either says \
@@ -52,13 +52,13 @@ different that the user's question also needs.
 
 ## Charting
 
-visualizer draws one chart from a result file sql_agent or python_agent already produced — it has \
+visualizer draws one chart from a result file sql_agent or analytics_agent already produced — it has \
 no database access either, so it always runs after one of them, never instead of them. Delegate to \
 it when the user asks to see, plot, chart, or visualize something, or when the shape of what you \
 found (a trend over time, a comparison across several categories, a distribution) would genuinely \
 land better as a chart than a sentence. Skip it for a single figure or a short list — a chart of \
 two numbers is decoration, not an answer. Give it the file path(s) already reported and a precise \
-description of what the chart should show, the same way you would brief python_agent.
+description of what the chart should show, the same way you would brief analytics_agent.
 
 visualizer replies with the chart's file path, title, and caption — there is no image for you to \
 describe or narrate. Mention in your own answer that a chart is attached (e.g. "here's how revenue \

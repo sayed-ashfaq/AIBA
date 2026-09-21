@@ -1,4 +1,4 @@
-"""The single tool exposed to the python subagent: run_python, which loads one or more result
+"""The single tool exposed to the analytics subagent: run_python, which loads one or more result
 files sql_agent already wrote into pandas DataFrames, runs model-written code against them in
 shared.sandbox's resource-limited subprocess, and writes whatever comes back as a new result file —
 same shape and same virtual-filesystem convention sql_agent's execute_sql uses.
@@ -22,7 +22,7 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-# defensive cap on the written output — python_agent's job is computing on data already capped at
+# defensive cap on the written output — analytics_agent's job is computing on data already capped at
 # MAX_ROWS by the SQL layer, so a result bigger than this means the code did something unexpected
 # (e.g. an accidental cross join) rather than a legitimate "top N"-sized answer
 MAX_ROWS_OUT = 5000

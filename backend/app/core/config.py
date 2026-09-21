@@ -27,7 +27,7 @@ class Settings(BaseSettings):
     main_agent_model: str = "openai/gpt-oss-120b"
     sql_agent_model: str = "openai/gpt-oss-120b"
     # same model as sql_agent — writing correct pandas is a comparable task to writing correct SQL
-    python_agent_model: str = "openai/gpt-oss-120b"
+    analytics_agent_model: str = "openai/gpt-oss-120b"
     visualizer_model: str = "openai/gpt-oss-120b"
     verifier_model: str = "openai/gpt-oss-120b"
 

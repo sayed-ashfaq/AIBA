@@ -63,7 +63,10 @@ def build_row(run_dir: str | Path, golden_dir: str | Path | None = None) -> dict
     sic = summary.get("sql_agent_invocations", {})
     bv = summary.get("by_verdict", {})
 
-    routed = {"sql_agent": 0, "python_agent": 0, "visualizer": 0, "other": 0}
+    # python_agent was renamed to analytics_agent in the app; "routed_to" values from live runs
+    # now say "analytics_agent" — tracked under that key here, but see the row-building note below
+    # on why the CSV column itself keeps its old name.
+    routed = {"sql_agent": 0, "analytics_agent": 0, "visualizer": 0, "other": 0}
     for r in rows:
         key = r.get("routed_to")
         routed[key if key in routed else "other"] += 1
@@ -102,7 +105,10 @@ def build_row(run_dir: str | Path, golden_dir: str | Path | None = None) -> dict
         "sqlagent_q_gt1": sic.get("questions_gt_1", ""),
         "sqlagent_redundant_total": sic.get("total_redundant", ""),
         "routed_sql_agent": routed["sql_agent"],
-        "routed_python_agent": routed["python_agent"],
+        # column name kept as routed_python_agent for metrics.csv history — upsert() rewrites the
+        # whole file on every write, so renaming this column would silently blank every historical
+        # row's count under the old name. Same agent, now called analytics_agent.
+        "routed_python_agent": routed["analytics_agent"],
         "routed_visualizer": routed["visualizer"],
         "routed_other": routed["other"],
         "failure_tags": _fail_tag_histogram(run_dir / "review.csv"),

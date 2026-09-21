@@ -15,7 +15,7 @@ needed to keep this to "this turn's steps," matching the "just the information p
 full conversation history" scope this was asked to have.
 
 Each subagent's reply text already carries what this review needs to judge the approach — sql_agent
-states the exact SQL it ran, python_agent and visualizer state what they computed or drew from —
+states the exact SQL it ran, analytics_agent and visualizer state what they computed or drew from —
 because their own prompts already require that in their final answer (see each subagent's prompt.py).
 Nothing here re-reads a result file or re-derives anything; it only reads what the orchestrator
 itself already received.

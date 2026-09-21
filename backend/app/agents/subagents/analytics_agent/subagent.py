@@ -1,4 +1,4 @@
-"""The python subagent's deep-agents config: name, description (what the orchestrator sees when
+"""The analytics subagent's deep-agents config: name, description (what the orchestrator sees when
 deciding to delegate here, and — critically — how it's told apart from sql_agent), system prompt,
 and its one tool (run_python).
 
@@ -23,12 +23,12 @@ from langchain.agents.middleware import ToolCallLimitMiddleware
 
 from app.agents.shared.operation_logging import OperationLoggingMiddleware
 from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
-from app.agents.subagents.python_agent.prompt import PYTHON_AGENT_PROMPT
-from app.agents.subagents.python_agent.tools import run_python
+from app.agents.subagents.analytics_agent.prompt import ANALYTICS_AGENT_PROMPT
+from app.agents.subagents.analytics_agent.tools import run_python
 from app.core.llm import get_llm
 
-python_agent: SubAgent = {
-    "name": "python_agent",
+analytics_agent: SubAgent = {
+    "name": "analytics_agent",
     "description": (
         "Computes on data sql_agent already retrieved — it has no database access of its own. Use "
         "for anything a single SQL query can't express: growth/change rates across separate "
@@ -37,12 +37,12 @@ python_agent: SubAgent = {
         "raw business question. If a question can be answered with SQL alone (filtering, grouping, "
         "aggregation, a single ranking), use sql_agent instead — this one is for what SQL can't do."
     ),
-    "system_prompt": PYTHON_AGENT_PROMPT,
+    "system_prompt": ANALYTICS_AGENT_PROMPT,
     "tools": [run_python],
-    "model": get_llm("python_agent"),
+    "model": get_llm("analytics_agent"),
     "middleware": [
         ToolCallRetryMiddleware(),
         ToolCallLimitMiddleware(tool_name="run_data_code", run_limit=3, exit_behavior="continue"),
-        OperationLoggingMiddleware("python_agent"),
+        OperationLoggingMiddleware("analytics_agent"),
     ],
 }

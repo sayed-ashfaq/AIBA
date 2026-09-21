@@ -6,7 +6,7 @@ _AGENT_MODELS = {
     "main_agent": settings.main_agent_model,
     "sql_agent": settings.sql_agent_model,
     "sql_generator": settings.sql_generator_model,
-    "python_agent": settings.python_agent_model,
+    "analytics_agent": settings.analytics_agent_model,
     "visualizer": settings.visualizer_model,
     "verifier": settings.verifier_model,
 }
