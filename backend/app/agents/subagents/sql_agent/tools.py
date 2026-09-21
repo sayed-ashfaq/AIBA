@@ -155,7 +155,7 @@ def sql_generator(schema_context: str, task: str, runtime: ToolRuntime) -> str:
 
     system_prompt = SQL_GENERATION_PROMPT.format(dialect=db_context.db_type)
     content = f"Schema:\n{schema_context}\n\nTask:\n{task}"
-    response = get_llm("sql_agent").invoke([SystemMessage(content=system_prompt), HumanMessage(content=content)])
+    response = get_llm("sql_generator").invoke([SystemMessage(content=system_prompt), HumanMessage(content=content)])
     reply = (response.content or "").strip()
 
     # A deliberate "no such value" refusal has no fenced SQL block and no SELECT/WITH keyword.

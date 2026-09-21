@@ -31,10 +31,17 @@ class Settings(BaseSettings):
     visualizer_model: str = "openai/gpt-oss-120b"
     verifier_model: str = "openai/gpt-oss-120b"
 
+    # sql_generator (tools.py) is a dedicated LLM call, separate from the sql_agent ReAct loop that
+    # invokes it as a tool — split out so a model swap can be tested on just "writing SQL from a
+    # schema + task" without also changing the subagent's own tool-use/planning behavior. Defaults
+    # to sql_agent_model's default so leaving it unset changes nothing.
+    sql_generator_model: str = "openai/gpt-oss-120b"
+
     # optional per-agent override, e.g. "none" to force instruct mode on a model that defaults to
     # thinking (qwen3.8-27b). None means "don't send reasoning_effort at all" — the model's own
     # default — so this is a no-op for agents/models that don't need tuning.
     sql_agent_reasoning_effort: Optional[str] = None
+    sql_generator_reasoning_effort: Optional[str] = None
 
     # EXPERIMENTAL: "plain" hands the SQL agent the full flat schema (db.render_schema_text);
     # "graph" runs schema_linking to hand it only the question-relevant slice. This is now just the

@@ -5,6 +5,7 @@ from app.core.config import settings
 _AGENT_MODELS = {
     "main_agent": settings.main_agent_model,
     "sql_agent": settings.sql_agent_model,
+    "sql_generator": settings.sql_generator_model,
     "python_agent": settings.python_agent_model,
     "visualizer": settings.visualizer_model,
     "verifier": settings.verifier_model,
@@ -13,6 +14,7 @@ _AGENT_MODELS = {
 # per-agent reasoning_effort override — absent/None means "send nothing, let the model default".
 _AGENT_REASONING_EFFORT = {
     "sql_agent": settings.sql_agent_reasoning_effort,
+    "sql_generator": settings.sql_generator_reasoning_effort,
 }
 
 
