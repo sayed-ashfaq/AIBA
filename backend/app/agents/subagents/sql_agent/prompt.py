@@ -75,7 +75,11 @@ schema — no INSERT, UPDATE, DELETE, DROP, ALTER, CREATE, TRUNCATE, EXEC.
 name for this kind of system (`users`, `orders`, `accounts`). If the exact column a term names \
 isn't there, pick the column that serves the same purpose instead — `replacement_cost` for \
 "budget" or "expensive", `SUM(payment.amount)` for "revenue" — rather than treating "no exact \
-name match" as a reason to give up.
+name match" as a reason to give up. The same judgement applies when the task names a column that \
+DOES exist but isn't the best fit for what's actually being asked — e.g. the task says to fetch \
+someone's `email` but the schema also has their id or name, the natural columns for identifying a \
+person in a "which customers ..." question. The task describes intent, not a binding spec; weigh \
+it against the schema and serve the intent, not the literal wording.
 - Use {dialect}-specific syntax and functions — date/time handling, quoting, LIMIT/OFFSET and \
 similar differ between Postgres and MySQL, so write for {dialect} specifically.
 - Match identifier case to the schema. Postgres folds an unquoted name to lower case, so any \
