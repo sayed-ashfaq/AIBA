@@ -61,7 +61,32 @@ async def _activate(session: AsyncSession, user: User, row: SavedConnection, con
     if user.active_connection_id != row.id:
         user.active_connection_id = row.id
         await session.commit()
+    _start_linking_graph_build(entry, user)
     return entry
+
+
+def _log_linking_graph_failure(task: asyncio.Task) -> None:
+    """Retrieves the task's exception so asyncio doesn't complain it was never looked at — this
+    fires for builds nobody was waiting on (e.g. the user never sent a chat message after
+    activating). A build a chat request *is* waiting on also gets its failure logged in
+    get_active_db_context when that request awaits the same task."""
+    if task.cancelled():
+        return
+    exc = task.exception()
+    if exc is not None:
+        logger.warning("schema_linking graph build failed", exc_info=exc)
+
+
+def _start_linking_graph_build(entry: ActiveConnection, user: User) -> None:
+    """Kick off the graph-mode schema build as soon as a connection goes active, instead of paying
+    for it on the first chat message. No-op outside graph mode. Fire-and-forget: activation returns
+    immediately, and get_active_db_context's _linking_graph() joins this same task later."""
+    mode = getattr(user, "schema_mode", None) or settings.schema_mode
+    if mode != "graph":
+        return
+    task = asyncio.create_task(_build_linking_graph(entry))
+    task.add_done_callback(_log_linking_graph_failure)
+    entry.linking_graph_task = task
 
 
 async def get_active(session: AsyncSession, user: User) -> Optional[ActiveConnection]:
@@ -325,15 +350,26 @@ async def get_active_schema_text(session: AsyncSession, user: User) -> str:
     return db.render_schema_text(entry.connection.tables, annotations)
 
 
+async def _build_linking_graph(entry: ActiveConnection) -> None:
+    """The actual build (introspection + per-table LLM descriptions + embeddings — seconds of
+    blocking work, hence off-thread). Stores the result on the entry; the caller decides whether
+    that's activation (eager) or the first chat message that needs it (lazy fallback)."""
+    with log_duration("Build schema_linking graph"):
+        entry.linking_graph = await asyncio.to_thread(
+            schema_linking.build_schema_graph, entry.connection.engine
+        )
+
+
 async def _linking_graph(entry: ActiveConnection):
-    """The experimental schema_linking graph for this connection, built once (introspection +
-    per-table LLM descriptions + embeddings — seconds of blocking work, hence off-thread) and
-    cached on the registry entry for the connection's lifetime."""
-    if entry.linking_graph is None:
-        with log_duration("Build schema_linking graph"):
-            entry.linking_graph = await asyncio.to_thread(
-                schema_linking.build_schema_graph, entry.connection.engine
-            )
+    """The experimental schema_linking graph for this connection, cached on the registry entry for
+    the connection's lifetime. Normally activation already started the build (see
+    _start_linking_graph_build) and this just joins it; it only starts one from scratch here if
+    graph mode was turned on after activation, so no build was ever kicked off."""
+    if entry.linking_graph is not None:
+        return entry.linking_graph
+    if entry.linking_graph_task is None:
+        entry.linking_graph_task = asyncio.create_task(_build_linking_graph(entry))
+    await entry.linking_graph_task
     return entry.linking_graph
 
 
@@ -360,7 +396,10 @@ async def get_active_db_context(session: AsyncSession, user: User) -> Optional[D
     if mode == "graph":
         try:
             graph = await _linking_graph(entry)
-        except Exception:
+        except (Exception, asyncio.CancelledError):
+            # CancelledError included: the build can be cancelled out from under an in-flight
+            # request if the user switches connections again before it finishes (see
+            # connection_registry._dispose) — that's still just "no graph yet", not a request failure.
             logger.warning("schema_linking build failed for user %s — using plain schema", user.id, exc_info=True)
             mode = "plain"
 

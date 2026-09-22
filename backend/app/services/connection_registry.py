@@ -10,6 +10,7 @@ connection id a user chose — is `users.active_connection_id`, so anything evic
 rebuilt on the next request. Losing an entry costs one reconnect, never correctness.
 """
 
+import asyncio
 import uuid
 from collections import OrderedDict
 from dataclasses import dataclass
@@ -35,8 +36,12 @@ class ActiveConnection:
     # describes. Kept here rather than in a cache keyed by id(engine): ids are recycled after
     # garbage collection, so a disposed engine's key could silently return another user's graph.
     schema_graph: Optional[SchemaGraph] = None  # prototype (schema_graph.py) — inspection UI only
-    # experimental schema_linking graph, built + cached on first graph-mode chat message
+    # experimental schema_linking graph, built + cached as soon as the connection goes active (in
+    # graph mode) rather than waiting for the first chat message
     linking_graph: Optional[schema_linking.SchemaGraph] = None
+    # the in-flight build, if one is running — lets a chat request join a build that activation
+    # already kicked off instead of starting a second one
+    linking_graph_task: Optional["asyncio.Task"] = None
 
 
 # ordered by least-recently-used first, so eviction is popitem(last=False)
@@ -76,6 +81,8 @@ def clear(user_id: uuid.UUID) -> None:
 def _dispose(entry: Optional[ActiveConnection]) -> None:
     if entry is None:
         return
+    if entry.linking_graph_task is not None:
+        entry.linking_graph_task.cancel()
     try:
         entry.connection.engine.dispose()
     except Exception:
