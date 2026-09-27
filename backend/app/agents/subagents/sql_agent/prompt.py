@@ -86,8 +86,9 @@ DOES exist but isn't the best fit for what's actually being asked — e.g. the t
 someone's `email` but the schema also has their id or name, the natural columns for identifying a \
 person in a "which customers ..." question. The task describes intent, not a binding spec; weigh \
 it against the schema and serve the intent, not the literal wording.
-- Use {dialect}-specific syntax and functions — date/time handling, quoting, LIMIT/OFFSET and \
-similar differ between Postgres and MySQL, so write for {dialect} specifically.
+- Use {dialect}-specific syntax and functions — date/time handling, quoting, LIMIT/OFFSET (or, in \
+tsql, TOP / OFFSET...FETCH) and similar differ across Postgres, MySQL and T-SQL, so write for \
+{dialect} specifically.
 - Match identifier case to the schema. Postgres folds an unquoted name to lower case, so any \
 table or column whose name in the schema is not all-lowercase (e.g. scheduledDeparture, \
 loungeId, "flightName") MUST be written in double quotes, spelled exactly as the schema shows \

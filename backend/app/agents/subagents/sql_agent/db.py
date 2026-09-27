@@ -10,7 +10,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Optional
 
 from sqlalchemy import create_engine, inspect
-from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.engine import URL, Engine, make_url
 
 from app.agents.subagents.sql_agent import rows
 from app.core.exceptions import ConnectionUnreachableError, SQLExecutionError
@@ -18,12 +18,40 @@ from app.core.logging import get_logger
 
 logger = get_logger(__name__)
 
-DBType = Literal["postgres", "mysql"]
+DBType = Literal["postgres", "mysql", "mssql"]
 
 _DRIVER = {
     "postgres": "postgresql+psycopg2",
     "mysql": "mysql+pymysql",
+    "mssql": "mssql+pyodbc",
 }
+
+# sqlglot's own dialect identifiers — distinct from DBType because sqlglot calls SQL Server "tsql",
+# not "mssql". DBType, SQLAlchemy's dialect.name, and sqlglot's dialect string only happen to line
+# up for postgres/mysql; callers that hand a dialect string to sqlglot (sql.py, tools.py) must go
+# through this rather than using db_type directly.
+_SQLGLOT_DIALECT = {
+    "postgres": "postgres",
+    "mysql": "mysql",
+    "mssql": "tsql",
+}
+
+
+def sqlglot_dialect(db_type: DBType) -> str:
+    return _SQLGLOT_DIALECT[db_type]
+
+
+# pyodbc needs an explicit driver name, and ODBC Driver 18+ encrypts by default — which fails
+# against a self-signed cert (the common case for an on-prem/local SQL Server) unless the client is
+# told to trust it. This is the driver actually installed alongside msodbcsql18.
+_MSSQL_ODBC_DRIVER = "ODBC Driver 18 for SQL Server"
+
+
+def _with_mssql_defaults(url):
+    """Fill in the ODBC params a pyodbc URL needs, without clobbering ones a user-supplied URL (or
+    a future caller) already set."""
+    query = {"driver": _MSSQL_ODBC_DRIVER, "TrustServerCertificate": "yes", **url.query}
+    return url.set(query=query)
 
 # The ceiling on one result set. Enforced twice, deliberately: sql.apply_row_cap writes it into the
 # query so the database itself stops early, and the fetch below repeats it in case a query somehow
@@ -108,11 +136,17 @@ def resolve_url(
 ) -> tuple[str, str]:
     if url:
         parsed = make_url(url).set(drivername=_DRIVER[db_type])
-        return parsed.render_as_string(hide_password=False), parsed.database
+    else:
+        if not all([host, port, user, password, dbname]):
+            raise ValueError("provide either 'url', or all of host/port/user/password/dbname")
+        # URL.create, not an f-string: a password containing '@', ':' or '/' (all valid, and not
+        # rare — e.g. a generated secret) would otherwise collide with the URL's own delimiters and
+        # silently point the driver at a mangled host instead of failing loudly
+        parsed = URL.create(_DRIVER[db_type], username=user, password=password, host=host, port=port, database=dbname)
 
-    if not all([host, port, user, password, dbname]):
-        raise ValueError("provide either 'url', or all of host/port/user/password/dbname")
-    return f"{_DRIVER[db_type]}://{user}:{password}@{host}:{port}/{dbname}", dbname
+    if db_type == "mssql":
+        parsed = _with_mssql_defaults(parsed)
+    return parsed.render_as_string(hide_password=False), parsed.database
 
 
 def _build_connection_blocking(db_type: DBType, sqlalchemy_url: str, dbname: str) -> Connection:
@@ -140,14 +174,25 @@ async def build_connection(db_type: DBType, sqlalchemy_url: str, dbname: str) ->
 # schemas whose tables are driver/catalog internals, never user data — always skip these
 _SYSTEM_SCHEMAS = {"information_schema", "pg_toast"}
 
+# SQL Server reports every fixed database role as a pseudo-schema alongside real ones (e.g. "dbo") —
+# none of these ever own user tables, so they're noise in the same way pg_catalog/pg_toast are
+_MSSQL_SYSTEM_SCHEMAS = {
+    "guest", "information_schema", "sys",
+    "db_accessadmin", "db_backupoperator", "db_datareader", "db_datawriter", "db_ddladmin",
+    "db_denydatareader", "db_denydatawriter", "db_owner", "db_securityadmin",
+}
+
 
 def schemas_to_introspect(engine: Engine, inspector) -> list[Optional[str]]:
-    # only postgres nests multiple schemas inside one connected database (mysql's "schema" IS the
-    # database, so schema=None already reflects exactly the connected db — no iteration needed)
-    if engine.dialect.name != "postgresql":
-        return [None]
-    schemas = [s for s in inspector.get_schema_names() if s not in _SYSTEM_SCHEMAS and not s.startswith("pg_")]
-    return schemas or [None]
+    # postgres and mssql both nest multiple schemas inside one connected database; mysql's "schema"
+    # IS the database, so schema=None already reflects exactly the connected db — no iteration needed
+    if engine.dialect.name == "postgresql":
+        schemas = [s for s in inspector.get_schema_names() if s not in _SYSTEM_SCHEMAS and not s.startswith("pg_")]
+        return schemas or [None]
+    if engine.dialect.name == "mssql":
+        schemas = [s for s in inspector.get_schema_names() if s.lower() not in _MSSQL_SYSTEM_SCHEMAS]
+        return schemas or [None]
+    return [None]
 
 
 def qualify(schema: Optional[str], table: str) -> str:
@@ -244,9 +289,14 @@ def run_query(sql: str, connection: Connection) -> QueryResult:
             if connection.db_type == "postgres":
                 conn.exec_driver_sql(f"SET statement_timeout = {QUERY_TIMEOUT_MS}")
                 conn.exec_driver_sql("SET TRANSACTION READ ONLY")
-            else:
+            elif connection.db_type == "mysql":
                 conn.exec_driver_sql(f"SET SESSION MAX_EXECUTION_TIME = {QUERY_TIMEOUT_MS}")
                 conn.exec_driver_sql("SET SESSION TRANSACTION READ ONLY")
+            else:
+                # T-SQL has no session-level statement-timeout or read-only pragma; LOCK_TIMEOUT
+                # bounds how long a query waits on a lock, the closest available analog. The actual
+                # write guard for mssql is enforce_read_only (sql.py), which vets the SQL text itself.
+                conn.exec_driver_sql(f"SET LOCK_TIMEOUT {QUERY_TIMEOUT_MS}")
             result = conn.exec_driver_sql(sql)
             fetched = result.fetchmany(MAX_ROWS)
             columns = rows.unique_columns(result.keys())

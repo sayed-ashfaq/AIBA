@@ -29,7 +29,7 @@ async def _get_or_build_graph(entry: ActiveConnection) -> schema_graph.SchemaGra
 
 class SaveConnectionRequest(BaseModel):
     name: str
-    db_type: Literal["postgres", "mysql"]
+    db_type: Literal["postgres", "mysql", "mssql"]
     host: Optional[str] = None
     port: Optional[int] = None
     user: Optional[str] = None

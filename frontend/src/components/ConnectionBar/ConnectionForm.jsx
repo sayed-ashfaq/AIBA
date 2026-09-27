@@ -43,6 +43,7 @@ export default function ConnectionForm({ onSubmit, onCancel }) {
       <select value={dbType} onChange={(e) => setDbType(e.target.value)} className={styles.input}>
         <option value="postgres">Postgres</option>
         <option value="mysql">MySQL</option>
+        <option value="mssql">SQL Server</option>
       </select>
 
       <div className={styles.modeToggle}>

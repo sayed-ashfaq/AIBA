@@ -153,7 +153,7 @@ def sql_generator(schema_context: str, task: str, runtime: ToolRuntime) -> str:
             "sql_generator got a %d-char schema_context (no fallback)", len(schema_context.strip())
         )
 
-    system_prompt = SQL_GENERATION_PROMPT.format(dialect=db_context.db_type)
+    system_prompt = SQL_GENERATION_PROMPT.format(dialect=db_lib.sqlglot_dialect(db_context.db_type))
     content = f"Schema:\n{schema_context}\n\nTask:\n{task}"
     response = get_llm("sql_generator").invoke([SystemMessage(content=system_prompt), HumanMessage(content=content)])
     reply = (response.content or "").strip()
@@ -166,7 +166,7 @@ def sql_generator(schema_context: str, task: str, runtime: ToolRuntime) -> str:
         return reply
 
     try:
-        return sql_lib.clean_sql(reply, db_context.db_type)
+        return sql_lib.clean_sql(reply, db_lib.sqlglot_dialect(db_context.db_type))
     except NL2SQLError as exc:
         logger.info("sql_generator produced invalid SQL: %s", exc)
         return f"Generation error: {exc}"
@@ -184,7 +184,7 @@ def _fix_sql(failing_sql: str, db_error: str, db_context, task: str, schema: str
         if len(prior) > 1
         else "(none)"
     )
-    system_prompt = SQL_FIX_PROMPT.format(dialect=db_context.db_type)
+    system_prompt = SQL_FIX_PROMPT.format(dialect=db_lib.sqlglot_dialect(db_context.db_type))
     content = (
         f"Schema:\n{schema}\n\n"
         f"Data request:\n{task or '(not provided)'}\n\n"
@@ -220,7 +220,7 @@ def _execute_with_repair(raw_sql: str, db_context, task: str):
     before giving up. Returns (cleaned_sql, QueryResult, n_repairs); raises the last NL2SQLError
     if every attempt still fails or a repair is rejected for changing the table set.
     """
-    dialect = db_context.db_type
+    dialect = db_lib.sqlglot_dialect(db_context.db_type)
     attempts: list[tuple[str, str]] = []  # (sql text tried, error) — newest last
     candidate = raw_sql
     last_exc: NL2SQLError | None = None

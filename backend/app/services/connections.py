@@ -319,7 +319,7 @@ def _validate_against_active(
     if table is None:
         raise InvalidAnnotationError(
             f"no table '{qualified}' in the active connection's schema — table names are "
-            f"schema-qualified for postgres (e.g. schema_name='public', table_name='rental')"
+            f"schema-qualified for postgres and mssql (e.g. schema_name='public'/'dbo', table_name='rental')"
         )
     if column_name and column_name not in {c.name for c in table.columns}:
         raise InvalidAnnotationError(f"no column '{column_name}' on table '{qualified}'")

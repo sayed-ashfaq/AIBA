@@ -154,6 +154,15 @@ _ROW_COUNT_QUERY = {
         FROM information_schema.tables
         WHERE table_schema = DATABASE() AND table_type = 'BASE TABLE'
     """,
+    # sys.partitions.rows is maintained metadata (like reltuples/table_rows above), not a live
+    # COUNT(*) — index_id IN (0, 1) is the heap or clustered index, i.e. counted once per table
+    "mssql": """
+        SELECT s.name AS schema_name, t.name AS table_name, SUM(p.rows) AS estimate
+        FROM sys.tables t
+        JOIN sys.schemas s ON s.schema_id = t.schema_id
+        JOIN sys.partitions p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
+        GROUP BY s.name, t.name
+    """,
 }
 
 
