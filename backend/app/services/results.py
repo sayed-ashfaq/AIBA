@@ -25,7 +25,8 @@ logger = get_logger(__name__)
 # Ceiling on one stored payload. The row cap is already 5000, but rows vary enormously in width —
 # four numeric columns is about half a megabyte, forty text columns is many times that, and only a
 # byte budget bounds both. Nothing visible is lost at this size: the client plots at most 1000
-# points and tables 200, so a result trimmed to fit renders identically to the one that ran.
+# points and tables only 10 inline (see DataTable's INLINE_ROW_LIMIT), so a result trimmed to fit
+# renders identically to the one that ran.
 MAX_STORED_BYTES = 256_000
 
 # Ceiling on the chart image's own base64 payload, tracked separately from MAX_STORED_BYTES: a

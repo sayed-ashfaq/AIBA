@@ -1,9 +1,10 @@
 import { formatFull } from "./chartData";
 import styles from "./DataTable.module.css";
 
-// enough to scan, not so many that the DOM node count starts to matter — the full set is always
-// one "Show SQL" away
-const VISIBLE_ROWS = 200;
+// The inline chat view never shows more than this — past it, ResultDataViewer's "View full data"
+// button is the only way to see the rest, so this has to match its own threshold exactly or one of
+// the two starts lying (a capped inline table with no button, or a button with nothing left to add).
+export const INLINE_ROW_LIMIT = 10;
 
 /**
  * The chart's readable twin.
@@ -13,7 +14,7 @@ const VISIBLE_ROWS = 200;
  * without relying on hue at all. It also covers the cases a chart can't — a result with no
  * measure, or one the visualizer declined to plot.
  */
-export default function DataTable({ columns, rows, limit = VISIBLE_ROWS, maxHeight }) {
+export default function DataTable({ columns, rows, limit = INLINE_ROW_LIMIT, maxHeight }) {
   const visible = rows.slice(0, limit);
 
   return (

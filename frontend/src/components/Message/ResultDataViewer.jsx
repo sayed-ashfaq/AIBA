@@ -1,13 +1,14 @@
 import { useState } from "react";
 import Modal from "../common/Modal";
 import { TableIcon } from "../common/icons";
-import DataTable from "../Chart/DataTable";
+import DataTable, { INLINE_ROW_LIMIT } from "../Chart/DataTable";
 import styles from "./ResultDataViewer.module.css";
 
-// Anything at or below this many rows is already readable inline (or in ChartCard's own table
-// toggle) — the floating window earns its place once a result is long enough that scanning it in
-// the chat column stops being practical.
-const ROW_THRESHOLD = 10;
+// Anything at or below this many rows is already fully visible inline (ChartCard's own table
+// toggle, capped the same way) — the floating window earns its place once a result has rows the
+// inline view had to cut off. Shares DataTable's own constant so the two can't drift apart: a
+// button with nothing left to add, or a capped table with no way to see the rest.
+const ROW_THRESHOLD = INLINE_ROW_LIMIT;
 
 /**
  * "You can view the complete list in the result file /results/xxxx.json" is true on the agent's

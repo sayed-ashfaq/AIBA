@@ -10,8 +10,9 @@ import styles from "./ChartCard.module.css";
  * the prose above it is often the whole answer. The chart/table switch is not decoration either:
  * the chart is a fixed image the visualizer subagent rendered (heatmaps, scatter, whatever the
  * data called for — not just what a declarative spec could express), so unlike the old spec-driven
- * chart there is nothing here to re-plot from different columns. The table is what stays fully
- * readable and inspectable regardless of what the image shows.
+ * chart there is nothing here to re-plot from different columns. The table is a plain-text twin of
+ * what the image shows, capped at DataTable's own INLINE_ROW_LIMIT the same as everywhere else in
+ * the chat column — past that, ResultDataViewer's "View full data" button is what has the rest.
  */
 export default function ChartCard({ data }) {
   const [isOpen, setIsOpen] = useState(true);
