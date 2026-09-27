@@ -103,7 +103,7 @@ def build_schema_graph(engine: Engine) -> SchemaGraph:
             qualified_name = db.qualify(schema_name, table_name)
             pk_columns = set(all_pks.get(table_key, {}).get("constrained_columns") or [])
             cols = [
-                {"name": c["name"], "type": str(c["type"]), "pk": c["name"] in pk_columns} for c in columns
+                {"name": c["name"], "type": db.column_type_str(c), "pk": c["name"] in pk_columns} for c in columns
             ]
             tables[qualified_name] = TableInfo(name=qualified_name, columns=cols)
             graph.add_node(qualified_name)

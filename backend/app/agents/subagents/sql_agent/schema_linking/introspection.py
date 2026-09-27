@@ -113,7 +113,7 @@ def introspect(
                     cols.append(
                         models.Column(
                             name=c["name"],
-                            type=str(c["type"]),
+                            type=db.column_type_str(c),
                             pk=c["name"] in pk_cols,
                             nullable=bool(c.get("nullable", True)),
                             sample_values=samples,
@@ -181,10 +181,14 @@ def _sample_values(
 
     qt = _quote_ident(engine, qualified_table)
     qc = _quote_ident(engine, col_name)
-    # DISTINCT + LIMIT enumerate_max+1: more than enumerate_max rows back and the
+    # DISTINCT + cap at enumerate_max+1: more than enumerate_max rows back and the
     # column is high-cardinality (a name, a description) — keep nothing. The +1
-    # tells "exactly at the cap" from "over it".
-    stmt = text(f"SELECT DISTINCT {qc} AS v FROM {qt} WHERE {qc} IS NOT NULL LIMIT :lim")
+    # tells "exactly at the cap" from "over it". T-SQL has no LIMIT — TOP (@n) is its equivalent,
+    # but it binds before DISTINCT rather than after the query like LIMIT does.
+    if engine.dialect.name == "mssql":
+        stmt = text(f"SELECT DISTINCT TOP (:lim) {qc} AS v FROM {qt} WHERE {qc} IS NOT NULL")
+    else:
+        stmt = text(f"SELECT DISTINCT {qc} AS v FROM {qt} WHERE {qc} IS NOT NULL LIMIT :lim")
     try:
         rows = conn.execute(stmt, {"lim": enumerate_max + 1}).fetchall()
     except Exception:

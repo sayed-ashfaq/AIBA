@@ -199,6 +199,15 @@ def qualify(schema: Optional[str], table: str) -> str:
     return f"{schema}.{table}" if schema else table
 
 
+def column_type_str(col: dict) -> str:
+    """The reflected column type as a short string. SQL Server's dialect renders its COLLATE clause
+    inline (e.g. 'NVARCHAR(255) COLLATE "SQL_Latin1_General_CP1_CI_AS"') on every text column —
+    irrelevant to writing a query, and repeated across every table it's enough schema bloat to
+    truncate a sql_generator tool call mid-JSON. Stripped for every dialect; a no-op where the
+    clause was never there."""
+    return str(col["type"]).split(" COLLATE", 1)[0]
+
+
 def _introspect(engine: Engine) -> dict[str, TableSchema]:
     inspector = inspect(engine)
     tables: dict[str, TableSchema] = {}
@@ -215,7 +224,7 @@ def _introspect(engine: Engine) -> dict[str, TableSchema]:
             qualified_name = qualify(schema_name, table_name)
             pk_columns = set(all_pks.get(table_key, {}).get("constrained_columns") or [])
 
-            cols = [ColumnSchema(name=c["name"], type=str(c["type"]), pk=c["name"] in pk_columns) for c in columns]
+            cols = [ColumnSchema(name=c["name"], type=column_type_str(c), pk=c["name"] in pk_columns) for c in columns]
             fks = [
                 ForeignKeySchema(
                     columns=fk["constrained_columns"],
