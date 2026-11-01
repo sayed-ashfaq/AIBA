@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronDownIcon } from "../common/icons";
 import DataTable from "./DataTable";
+import OpenUIView from "./OpenUIView";
 import styles from "./ChartCard.module.css";
 
 /**
@@ -52,7 +53,9 @@ export default function ChartCard({ data }) {
         <>
           {data.chart_caption && <p className={styles.caption}>{data.chart_caption}</p>}
 
-          {view === "chart" ? (
+          {view === "chart" && data.chart_openui ? (
+            <OpenUIView program={data.chart_openui} columns={data.columns} rows={data.rows} />
+          ) : view === "chart" ? (
             <div className={styles.imageFrame}>
               <img
                 className={styles.image}

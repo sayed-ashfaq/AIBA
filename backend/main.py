@@ -22,7 +22,7 @@ app = FastAPI(title="AIBA")
 # real origin allowlist before deploying.
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r"http://(localhost|127\.0\.0\.1):\d+",
+    allow_origin_regex=r"http://(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+):\d+",
     allow_methods=["*"],
     allow_headers=["*"],
     # required for the session cookie to be sent on cross-origin requests. Note this is why the

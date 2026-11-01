@@ -60,6 +60,17 @@ def write_chart(image_base64: str, title: str, caption: str) -> str:
     return path
 
 
+def write_openui_chart(program: str, title: str, caption: str) -> str:
+    """Write one OpenUI Lang program to the virtual filesystem and return its path. The program is
+    a few hundred bytes of wiring, not data: the browser binds it to the result rows it already
+    carries (see frontend OpenUIView), so unlike write_chart there is no image to size-limit.
+    """
+    path = f"{CHARTS_DIR}/{uuid.uuid4().hex[:8]}.json"
+    payload = {"openui": program, "title": title, "caption": caption}
+    StateBackend().write(path, json.dumps(payload))
+    return path
+
+
 def read_chart(path: str) -> dict:
     """Read back a payload written by write_chart. Raises FileNotFoundError, same as read_result."""
     result = StateBackend().read(path)

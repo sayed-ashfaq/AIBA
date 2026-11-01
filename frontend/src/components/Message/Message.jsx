@@ -19,7 +19,7 @@ export default function Message({ message }) {
       <div className={`${styles.bubble} ${isUser ? styles.bubbleUser : styles.bubbleAssistant}`}>
         {!isUser && message.steps && <ActivityTrail steps={message.steps} />}
         {isUser ? <p className={styles.text}>{message.content}</p> : <Markdown>{message.content}</Markdown>}
-        {message.data?.chart_image && (
+        {(message.data?.chart_openui || message.data?.chart_image) && (
           <Suspense fallback={null}>
             <ChartCard data={message.data} />
           </Suspense>

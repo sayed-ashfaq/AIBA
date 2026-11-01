@@ -1,9 +1,9 @@
 """The visualizer subagent's deep-agents config: name, description (what the orchestrator sees when
-deciding to delegate here), system prompt, and its one tool (render_chart).
+deciding to delegate here), system prompt, and its two tools (inspect_data, render_chart).
 
-Runs as a free-form ReAct loop, same shape as analytics_agent — draw, read the sandbox's error if any,
-retry, guided by prompt.py's retry cap. See tools.py for why this replaced charts.py's rule-based
-picker.
+Runs as a free-form ReAct loop, same shape as analytics_agent — inspect the data, write an OpenUI
+Lang program, read the tool's problems if any, retry, guided by prompt.py's retry cap. See tools.py
+for why this replaced the matplotlib sandbox.
 
 ToolCallRetryMiddleware: Groq occasionally rejects a malformed tool call (wrong/missing parameter
 names) from this model family with a hard 400 that would otherwise crash the turn — see its
@@ -14,8 +14,11 @@ ToolCallLimitMiddleware enforces prompt.py's "up to 3 attempts" as a hard cap ra
 convention the model is trusted to count on its own — see analytics_agent/subagent.py's docstring for
 the full reasoning; the same applies here for render_chart.
 
+RequireChartMiddleware sends the model back when it tries to finish without a successful
+render_chart — see its docstring for the incident that motivated it.
+
 OperationLoggingMiddleware writes one local log line per render_chart call, naming this agent and
-including the exact matplotlib/seaborn code run, so `grep`ing the log file shows what ran without
+including the exact OpenUI program checked, so `grep`ing the log file shows what ran without
 opening LangSmith.
 """
 
@@ -24,8 +27,9 @@ from langchain.agents.middleware import ToolCallLimitMiddleware
 
 from app.agents.shared.operation_logging import OperationLoggingMiddleware
 from app.agents.shared.tool_call_retry import ToolCallRetryMiddleware
+from app.agents.subagents.visualizer.middleware import RequireChartMiddleware
 from app.agents.subagents.visualizer.prompt import VISUALIZER_PROMPT
-from app.agents.subagents.visualizer.tools import render_chart
+from app.agents.subagents.visualizer.tools import inspect_data, render_chart
 from app.core.llm import get_llm
 
 visualizer: SubAgent = {
@@ -39,11 +43,12 @@ visualizer: SubAgent = {
         "skip it for a single number or a short table."
     ),
     "system_prompt": VISUALIZER_PROMPT,
-    "tools": [render_chart],
+    "tools": [inspect_data, render_chart],
     "model": get_llm("visualizer"),
     "middleware": [
         ToolCallRetryMiddleware(),
         ToolCallLimitMiddleware(tool_name="render_chart", run_limit=3, exit_behavior="continue"),
+        RequireChartMiddleware(),
         OperationLoggingMiddleware("visualizer"),
     ],
 }

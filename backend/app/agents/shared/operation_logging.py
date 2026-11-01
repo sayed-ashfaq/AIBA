@@ -1,5 +1,5 @@
 """One log line per tool call, written to the local log file only — which agent called which tool,
-and with what: the SQL, the pandas/matplotlib code, the delegation instructions. Not LangSmith (that's
+and with what: the SQL, the pandas code, the OpenUI program, the delegation instructions. Not LangSmith (that's
 already wired up via .env and has the full call graph in a browser); this is for a plain `tail`/`grep`
 on the log file to see what an agent actually did.
 
@@ -27,7 +27,7 @@ logger = get_logger(__name__)
 # escaped inside a dict repr next to everything else. execute_sql's `sql` arrives already
 # reformatted by sql.py's clean_sql (reindented, transpiled with pretty=True), so this doesn't
 # reformat it again — it only stops the log line from mangling formatting that's already there.
-_PRIMARY_ARG_NAMES = ("sql", "code")
+_PRIMARY_ARG_NAMES = ("sql", "code", "program")
 
 # arguments big enough that logging them in full would bury the one thing worth seeing on this
 # call — sql_generator gets the whole database schema every time; shown as a size, not the schema.

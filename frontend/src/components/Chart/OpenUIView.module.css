@@ -1,0 +1,13 @@
+.frame {
+  margin-top: 8px;
+}
+
+.fallback {
+  margin-top: 8px;
+}
+
+.fallbackNote {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}

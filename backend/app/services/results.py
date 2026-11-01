@@ -61,6 +61,9 @@ class QueryData(BaseModel):
     # show directly. None is ordinary — most answers are a sentence, and not every turn delegates
     # to visualizer at all.
     chart_image: Optional[str] = None
+    # the same chart as an OpenUI Lang program the browser renders against `rows`, replacing the
+    # image above for new answers. chart_image stays so conversations stored before this still open.
+    chart_openui: Optional[str] = None
     chart_title: Optional[str] = None
     chart_caption: Optional[str] = None
     # sent whenever rows are, chart or not: it's what lets the client build its own controls (which
@@ -111,6 +114,7 @@ def from_agent_files(files: dict) -> Optional[QueryData]:
         row_count=result.row_count,
         truncated=result.truncated,
         chart_image=chart.get("image_base64") if chart else None,
+        chart_openui=chart.get("openui") if chart else None,
         chart_title=chart.get("title") if chart else None,
         chart_caption=chart.get("caption") if chart else None,
         profile=[ColumnInfo(name=c.name, role=c.role, distinct=c.distinct, nulls=c.nulls) for c in profile.columns],
