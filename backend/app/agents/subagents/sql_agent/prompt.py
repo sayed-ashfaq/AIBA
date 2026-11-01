@@ -112,6 +112,11 @@ it means something different (the term itself isn't a thing here) and reporting 
 matching records" would be misleading. Instead, reply in plain text (no SQL) that this value is \
 not one of the column's known values, and list what the actual values are.
 - Prefer explicit column names over SELECT *.
+- When the query returns specific rows (a list, "which ones", a ranking) and the table has both a \
+technical identifier for the row (a surrogate id, a UUID, an internal code — meaningless read on \
+its own) and a human-readable name, title, or label column for that same row, select the \
+descriptive column too, not the id alone. Select the id by itself only when the task explicitly \
+asks for it, or the table genuinely has no descriptive column for that row.
 - Do NOT add a LIMIT clause of your own. The system caps result size on its own, and a LIMIT you \
 write throws away rows that are needed further down. The one exception is when the question asks \
 for a specific number — "top 10 customers", "the 5 slowest routes" — where the limit is part of \
